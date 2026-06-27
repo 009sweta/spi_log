@@ -1,0 +1,135 @@
+════════════════════════════════════════════════════════════════════════════
+  SPU LOG ANALYZER — BUILDING A TRUE STANDALONE .EXE
+════════════════════════════════════════════════════════════════════════════
+
+This folder lets you compile SPU Log Analyzer into ONE single .exe file
+that runs on any Windows machine WITHOUT needing Python installed at all.
+This is different from the Install_and_Run.bat in the parent folder,
+which installs Python automatically but still needs an internet
+connection and a few minutes the first time it runs.
+
+A compiled .exe (built using these instructions) has Python and all
+libraries baked directly inside it — nothing to install, ever. This is
+the best option if you want to hand the tool to colleagues who have
+restricted internet access or admin permissions.
+
+
+────────────────────────────────────────────────────────────────────────────
+ REQUIREMENTS TO BUILD (only needed on YOUR machine, once)
+────────────────────────────────────────────────────────────────────────────
+
+  • A Windows 10 or 11 machine
+  • Python 3.9–3.12 installed (download from python.org if needed)
+  • Internet connection (to download PyInstaller + dependencies)
+
+  Note: the machine you BUILD on needs Python. The machine you RUN the
+  finished .exe on does NOT need Python — that's the whole point.
+
+
+────────────────────────────────────────────────────────────────────────────
+ STEP-BY-STEP BUILD INSTRUCTIONS
+────────────────────────────────────────────────────────────────────────────
+
+  1. Open Command Prompt (search "cmd" in the Start Menu)
+
+  2. Install the required build tools and libraries:
+
+         pip install pyinstaller pandas openpyxl chardet
+
+  3. Navigate to this build_exe folder. For example, if you extracted
+     the project to your Desktop:
+
+         cd C:\Users\YourName\Desktop\spu_log_analysis_tool_adarsh\build_exe
+
+  4. (Optional) Add a custom icon:
+       - Place a .ico file named "app_icon.ico" in this same folder
+       - If you don't have one, open spu_analyzer.spec in Notepad and
+         delete the line that says:  icon='app_icon.ico',
+       - A free icon converter: https://convertio.co/png-ico/
+
+  5. Run PyInstaller using the provided spec file:
+
+         pyinstaller spu_analyzer.spec
+
+     This will take 1–3 minutes. You'll see a lot of text scroll by —
+     that's normal.
+
+  6. When it finishes, find your finished executable at:
+
+         build_exe\dist\SPU_Log_Analyzer.exe
+
+  7. That single .exe file is now fully standalone. Copy it anywhere —
+     a USB drive, another computer, a shared network folder — and
+     double-click to run. No Python, no pip, no internet required.
+
+
+────────────────────────────────────────────────────────────────────────────
+ TROUBLESHOOTING
+────────────────────────────────────────────────────────────────────────────
+
+  "pyinstaller is not recognized..."
+      → Run:  python -m pip install pyinstaller
+        Then try again with:  python -m PyInstaller spu_analyzer.spec
+
+  Antivirus flags the .exe as suspicious / deletes it
+      → This is a common FALSE POSITIVE with PyInstaller-built executables
+        because antivirus software sometimes mistakes the bundling
+        technique for malware packing. Solutions:
+          a) Add an exception/exclusion for the dist folder in your
+             antivirus settings before building
+          b) Sign the exe with a code-signing certificate (advanced,
+             optional, costs money — only needed for public distribution)
+          c) Submit the exe to your antivirus vendor as a false positive
+
+  The exe builds but won't launch / closes instantly
+      → Temporarily set console=True in spu_analyzer.spec (instead of
+        False), rebuild, and run from Command Prompt to see the actual
+        error message:
+             cd dist
+             SPU_Log_Analyzer.exe
+        Once fixed, switch console back to False and rebuild for the
+        final clean version (no black console window).
+
+  "Failed to execute script" error on first run
+      → Usually means a hidden dependency wasn't bundled. Open
+        spu_analyzer.spec and add the missing module name to the
+        hiddenimports list, then rebuild.
+
+  The .exe file is very large (100+ MB)
+      → This is normal. PyInstaller bundles a full Python interpreter
+        plus pandas, openpyxl, and all their dependencies into one file.
+        This is the tradeoff for true standalone operation.
+
+
+────────────────────────────────────────────────────────────────────────────
+ WHAT'S IN THIS FOLDER
+────────────────────────────────────────────────────────────────────────────
+
+  spu_analyzer.spec     PyInstaller build configuration (already set up
+                         to point at ../app/spu_log_analyzer.py)
+  version_info.txt      Embeds version/company info into the exe's
+                         Properties dialog (optional, already configured)
+  BUILD_INSTRUCTIONS.txt   This file
+  app_icon.ico           (You provide this — optional custom icon)
+
+  After building, PyInstaller will also create:
+  build\                Temporary build files (safe to delete after)
+  dist\                 Contains the FINAL SPU_Log_Analyzer.exe
+  *.spec                Already provided — no need to regenerate
+
+
+────────────────────────────────────────────────────────────────────────────
+ DISTRIBUTING THE FINISHED EXE
+────────────────────────────────────────────────────────────────────────────
+
+  Once built, dist\SPU_Log_Analyzer.exe is completely self-contained.
+  You can:
+    • Copy it to any Windows 10/11 PC and double-click to run
+    • Put it on a USB drive for offline distribution
+    • Share it on a network drive for your whole team
+    • Rename it to anything you like
+
+  No installer, no Python, no internet connection needed on the
+  machine that runs it.
+
+════════════════════════════════════════════════════════════════════════════

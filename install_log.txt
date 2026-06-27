@@ -1,0 +1,11 @@
+ 
+[24-06-2026  0:05:26.66] ==================================================== 
+[24-06-2026  0:05:26.68]  SPU Log Analyzer - Installation started 
+[24-06-2026  0:05:26.69] ==================================================== 
+[24-06-2026  0:05:28.78] [STEP 1] Checking for Python installation 
+[24-06-2026  0:05:29.24] Found Python 3.14.0 via 'py' launcher 
+[24-06-2026  0:05:29.27] [STEP 2] Skipped - Python already present 
+[24-06-2026  0:05:29.28] [STEP 3] Installing pip packages 
+[24-06-2026  0:05:36.63] All packages verified successfully 
+[24-06-2026  0:05:36.78] [STEP 4] Launching application 
+[24-06-2026  0:05:41.15] Application launched - setup complete 
