@@ -5,3 +5,6 @@ data/vector_db.json
 data/rag_uploads/
 __pycache__/
 *.pyc
+build_exe/
+install_log.txt
+*.log

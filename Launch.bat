@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 title SPU Log Analyzer
 chcp 65001 >nul 2>&1
 
@@ -39,7 +39,7 @@ exit /b 1
 
 :found
 REM Quick package check — if missing, redirect to full installer
-%PYTHON_CMD% -c "import pandas, openpyxl" >nul 2>&1
+%PYTHON_CMD% -c "import pandas, openpyxl, chardet, pypdf" >nul 2>&1
 if %errorlevel% neq 0 (
     cls
     echo.
@@ -54,11 +54,11 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-if not exist "%APP_DIR%\spu_log_analyzer.py" (
-    echo   ERROR: Application file not found at %APP_DIR%\spu_log_analyzer.py
+if not exist "%APP_DIR%\web_server.py" (
+    echo   ERROR: Web server file not found at %APP_DIR%\web_server.py
     pause
     exit /b 1
 )
 
-start "" %PYTHON_CMD% "%APP_DIR%\spu_log_analyzer.py"
+start "" %PYTHON_CMD% "%APP_DIR%\web_server.py"
 exit /b 0

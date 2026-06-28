@@ -1,0 +1,14 @@
+{
+  "name": "spu-log-analyzer-web",
+  "version": "1.0.0",
+  "description": "Root workspace to launch SPU Log Analyzer backend and frontend services concurrently",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently \"npm run start --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal EnableDelayedExpansion
 title SPU Log Analyzer - Setup
 color 0B
@@ -27,7 +27,7 @@ echo.
 echo   This wizard will:
 echo     1. Check if Python is installed on your system
 echo     2. Install Python automatically if it is missing
-echo     3. Install required packages (pandas, openpyxl, chardet)
+echo     3. Install required packages (pandas, openpyxl, chardet, pypdf)
 echo     4. Launch the SPU Log Analyzer application
 echo.
 echo   ────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ echo   [3/4]  Installing required packages...
 echo   ────────────────────────────────────────────────────────────
 call :log "[STEP 3] Installing pip packages"
 echo.
-echo   Installing: pandas, openpyxl, chardet
+echo   Installing: pandas, openpyxl, chardet, pypdf
 echo   ^(this may take 1-3 minutes on first run^)
 echo.
 
@@ -183,15 +183,15 @@ REM Upgrade pip first (quietly, ignore failures)
 !PYTHON_CMD! -m pip install --upgrade pip --quiet --disable-pip-version-check >nul 2>&1
 
 REM Install required packages — show progress, don't hide errors
-!PYTHON_CMD! -m pip install --quiet --disable-pip-version-check pandas openpyxl chardet
+!PYTHON_CMD! -m pip install --quiet --disable-pip-version-check pandas openpyxl chardet pypdf
 if !errorlevel! neq 0 (
     echo   ⚠  Standard install failed, retrying with --user flag...
     call :log "Standard pip install failed, retrying with --user"
-    !PYTHON_CMD! -m pip install --user --quiet --disable-pip-version-check pandas openpyxl chardet
+    !PYTHON_CMD! -m pip install --user --quiet --disable-pip-version-check pandas openpyxl chardet pypdf
 )
 
 REM Verify packages installed correctly
-!PYTHON_CMD! -c "import pandas, openpyxl, chardet" >nul 2>&1
+!PYTHON_CMD! -c "import pandas, openpyxl, chardet, pypdf" >nul 2>&1
 if !errorlevel! equ 0 (
     echo   ✔  All packages installed successfully!
     call :log "All packages verified successfully"
@@ -208,50 +208,6 @@ if !errorlevel! neq 0 (
     echo   ⚠  WARNING: tkinter ^(GUI library^) not found.
     echo      This is unusual for a standard Python install.
     echo      If the app fails to launch, please reinstall Python
-    echo      from python.org and ensure "tcl/tk and IDLE" is checked.
-    echo.
-    call :log "WARNING: tkinter not available"
-)
-
-echo.
-echo   ────────────────────────────────────────────────────────────
-echo   [4/4]  Launching SPU Log Analyzer...
-echo   ────────────────────────────────────────────────────────────
-call :log "[STEP 4] Launching application"
-echo.
-timeout /t 2 /nobreak >nul
-
-if not exist "%APP_DIR%\spu_log_analyzer.py" (
-    echo   ✖  ERROR: Application file not found at:
-    echo      %APP_DIR%\spu_log_analyzer.py
-    echo.
-    echo      Please make sure the 'app' folder is in the same
-    echo      directory as this installer.
-    call :log "ERROR: spu_log_analyzer.py not found in app folder"
-    pause
-    exit /b 1
-)
-
-echo   Starting application — a new window will open shortly...
-echo.
-start "" !PYTHON_CMD! "%APP_DIR%\spu_log_analyzer.py"
-
-timeout /t 3 /nobreak >nul
-call :log "Application launched - setup complete"
-echo   ════════════════════════════════════════════════════════════
-echo    Setup complete! You can close this window.
-echo.
-echo    Next time, just double-click "Launch.bat" to start the app
-echo    directly — no need to run the full installer again.
-echo   ════════════════════════════════════════════════════════════
-echo.
-pause
-exit /b 0
-
-
-REM ============================================================
-REM  Helper: log a message with timestamp to LOGFILE
-REM ============================================================
 :log
 echo [%date% %time%] %~1 >> "%LOGFILE%"
 exit /b 0

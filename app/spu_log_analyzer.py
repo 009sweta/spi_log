@@ -902,7 +902,8 @@ def _sheet_summary(wb, filtered, alarms, start_t, end_t):
             _sheet_hyperlink(ws, r, 5, sheet_map["⚠️ All Alarms"], "→ All Alarms")
         elif not is_alarm:
             # Link to dedicated event-type sheet
-            sheet_title = f"📋 {re.sub(r'[\\/*?:\\[\\]]', '_', etype)[:28]}"
+            safe_title = re.sub(r"[\\/*?:\[\]]", "_", etype)[:28]
+            sheet_title = f"📋 {safe_title}"
             if sheet_title in sheet_map:
                 _sheet_hyperlink(ws, r, 5, sheet_map[sheet_title], "→ Details")
             else:
@@ -1278,7 +1279,8 @@ def _sheet_event_type_summary(wb, filtered, start_t, end_t):
                                  indent=1 if ci == 4 else 0)
 
         # Hyperlink to dedicated sheet
-        sheet_title = f"📋 {re.sub(r'[\\/*?:\\[\\]]', '_', etype)[:28]}"
+        safe_title = re.sub(r"[\\/*?:\[\]]", "_", etype)[:28]
+        sheet_title = f"📋 {safe_title}"
         if sheet_title in sheet_map:
             _sheet_hyperlink(ws, r, 5, sheet_map[sheet_title], "→ Details")
         else:
