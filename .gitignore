@@ -1,0 +1,7 @@
+.env
+.web_uploads/
+.venv/
+data/vector_db.json
+data/rag_uploads/
+__pycache__/
+*.pyc

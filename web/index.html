@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SPU Log Analyzer</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <canvas id="sakura-canvas"></canvas>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">S</div>
+        <div>
+          <h1>SPU Console</h1>
+          <p>No-Node local web UI</p>
+        </div>
+      </div>
+
+      <nav class="nav-stack" aria-label="Primary">
+        <button class="nav-item active" type="button" data-tab="analyzerView">
+          <span class="nav-icon">LD</span>
+          <span>Log Diagnostics</span>
+        </button>
+        <button class="nav-item" type="button" data-tab="ragView">
+          <span class="nav-icon">KB</span>
+          <span>Knowledge Base</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-status">
+        <div class="status-indicator">
+          <span id="serverStatus" class="status-dot"></span>
+          <span id="serverStatusText">Checking server</span>
+        </div>
+        <div class="runtime-badge">Python Local</div>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <section class="page-view active" id="analyzerView">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Fault Diagnosis & Analytics</p>
+            <h2>Log Diagnostics</h2>
+          </div>
+        </header>
+
+        <div class="analyzer-grid">
+          <section class="panel input-panel">
+            <div class="panel-title">
+              <h3>Run Configuration</h3>
+            </div>
+
+            <form id="analyzeForm">
+              <div class="field file-dropzone" id="fileDropzone">
+                <input id="logFile" name="file" type="file" accept=".csv,.xlsx,.xls,.txt,.log,.tsv" required class="hidden-input">
+                <div class="drop-content">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <span class="drop-text" id="dropText">Click or drag SPU log file here</span>
+                </div>
+              </div>
+
+              <div class="split-fields">
+                <label class="field">
+                  <span>Start time</span>
+                  <div class="time-input-wrapper">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <input id="startTime" name="start" type="time" value="00:00" required>
+                  </div>
+                </label>
+
+                <label class="field">
+                  <span>End time</span>
+                  <div class="time-input-wrapper">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <input id="endTime" name="end" type="time" value="23:59" required>
+                  </div>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Output folder</span>
+                <input id="outDir" name="outdir" type="text" placeholder="e.g., C:\SPU_Reports" autocomplete="off">
+                <p class="helper-text">Leave blank to default to your user SPU_Reports folder.</p>
+              </label>
+
+              <button id="runBtn" class="primary-btn" type="submit">Generate Reports</button>
+            </form>
+          </section>
+
+          <section class="analyzer-results">
+            <!-- Pre-run Empty State -->
+            <div id="resultsEmptyState" class="panel empty-state-panel">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+              <h3>No data yet</h3>
+              <p>Select a log file and generate reports to view analysis.</p>
+            </div>
+
+            <!-- Post-run Content -->
+            <div id="resultsContent" style="display: none;">
+              <div class="stats-grid">
+                <article class="stat-card" id="cardTotal">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                  <span id="totalEntries">-</span>
+                  <p>Total entries</p>
+                </article>
+                <article class="stat-card" id="cardAlarms">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                  <span id="alarmsDetected">-</span>
+                  <p>Alarms detected</p>
+                </article>
+                <article class="stat-card" id="cardA">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  <span id="classA">-</span>
+                  <p>Class A</p>
+                </article>
+                <article class="stat-card" id="cardB">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                  <span id="classB">-</span>
+                  <p>Class B</p>
+                </article>
+                <article class="stat-card" id="cardC">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                  <span id="classC">-</span>
+                  <p>Class C</p>
+                </article>
+                <article class="stat-card" id="cardD">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                  <span id="classD">-</span>
+                  <p>Class D</p>
+                </article>
+              </div>
+
+              <section class="panel unified-results-panel">
+                <div class="tabs-header">
+                  <div class="tabs-nav">
+                    <button class="result-tab active" data-target="activityLog">Activity Log</button>
+                    <button class="result-tab" data-target="generatedFiles">Generated Files</button>
+                  </div>
+                  <button id="clearLog" class="secondary-btn small-btn" type="button">Clear</button>
+                </div>
+                
+                <div class="tab-content active" id="activityLog">
+                  <div class="terminal-container">
+                    <pre id="logOutput">Ready. Select a file and generate reports.</pre>
+                  </div>
+                </div>
+
+                <div class="tab-content" id="generatedFiles">
+                  <div id="filesList" class="files-list empty">
+                    <p class="empty-state-text">No reports generated yet.</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="page-view" id="ragView">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Semantic Document Retrieval</p>
+            <h2>Knowledge Base</h2>
+          </div>
+          <div class="model-stack">
+            <span id="embeddingModelLabel">Embedding: loading</span>
+            <span id="groqModelLabel">LLM: loading</span>
+          </div>
+        </header>
+
+        <div class="rag-grid">
+          <section class="panel rag-settings-panel">
+            <div class="panel-title">
+              <h3>API Settings</h3>
+            </div>
+
+            <form id="ragSettingsForm">
+              <label class="field">
+                <span>OpenRouter API key</span>
+                <input id="openRouterKey" type="password" autocomplete="off" placeholder="Used for Nvidia Nemotron embeddings">
+              </label>
+              <label class="field">
+                <span>Groq API key</span>
+                <input id="groqKey" type="password" autocomplete="off" placeholder="Used for the chat completion model">
+              </label>
+              <label class="field">
+                <span>Groq model</span>
+                <select id="groqModel">
+                  <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                  <option value="llama-3.3-70b-versatile" selected>llama-3.3-70b-versatile</option>
+                  <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+                </select>
+              </label>
+              <button id="saveRagSettingsBtn" class="secondary-btn" type="submit">Save Settings</button>
+              <p id="ragSettingsStatus" class="form-status"></p>
+            </form>
+          </section>
+
+          <section class="panel rag-docs-panel">
+            <div class="panel-title inline">
+              <h3>Documents</h3>
+              <span id="chunkCount" class="compact-pill">0 chunks</span>
+            </div>
+
+            <form id="ragUploadForm" class="upload-form">
+              <label class="upload-zone">
+                <input id="ragFilesInput" name="files" type="file" multiple accept=".txt,.md,.csv,.log,.pdf">
+                <span>Choose documents</span>
+              </label>
+              <button id="uploadRagBtn" class="ghost-btn" type="submit">Upload</button>
+            </form>
+
+            <div id="ragFilesList" class="doc-list empty">No documents uploaded.</div>
+
+            <button id="ingestBtn" class="primary-btn" type="button">Ingest & Index</button>
+            <pre id="ingestLog" class="compact-log">Indexing logs will appear here.</pre>
+          </section>
+
+          <section class="panel rag-chat-panel">
+            <div class="panel-title inline">
+              <h3>Assistant</h3>
+              <span id="ragStatus" class="compact-pill">Ready</span>
+            </div>
+
+            <div id="chatMessages" class="chat-messages">
+              <div class="message assistant">
+                <p>Ask about uploaded SPU fault documents after indexing them.</p>
+              </div>
+            </div>
+
+            <div id="retrievalHits" class="retrieval-hits"></div>
+
+            <form id="ragQueryForm" class="query-bar">
+              <input id="ragQuery" type="text" autocomplete="off" placeholder="Ask about alarm causes, classes, or corrective actions">
+              <button id="askRagBtn" class="primary-btn" type="submit">Ask</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/sakura.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
