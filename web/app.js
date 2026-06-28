@@ -38,7 +38,7 @@ const fileDropzone = document.getElementById("fileDropzone");
 const logFileInput = document.getElementById("logFile");
 const dropText = document.getElementById("dropText");
 
-async function checkUnixFormat(file) {
+async function checkLogFileFormat(file) {
   const formData = new FormData();
   formData.append("file", file);
   try {
@@ -75,7 +75,7 @@ function escapeHTML(str) {
 function handleFileSelection(file) {
   if (file) {
     dropText.textContent = "Checking format...";
-    checkUnixFormat(file);
+    checkLogFileFormat(file);
   } else {
     dropText.textContent = "Click or drag SPU log file here";
   }
@@ -85,21 +85,29 @@ logFileInput.addEventListener("change", () => {
   handleFileSelection(logFileInput.files[0]);
 });
 
-fileDropzone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  fileDropzone.classList.add("drag-active");
-});
-fileDropzone.addEventListener("dragleave", () => {
-  fileDropzone.classList.remove("drag-active");
-});
-fileDropzone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  fileDropzone.classList.remove("drag-active");
-  if (e.dataTransfer.files.length) {
-    logFileInput.files = e.dataTransfer.files;
-    handleFileSelection(e.dataTransfer.files[0]);
-  }
-});
+if (fileDropzone && logFileInput) {
+  fileDropzone.addEventListener("click", (e) => {
+    if (e.target !== logFileInput) {
+      logFileInput.click();
+    }
+  });
+
+  fileDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    fileDropzone.classList.add("drag-active");
+  });
+  fileDropzone.addEventListener("dragleave", () => {
+    fileDropzone.classList.remove("drag-active");
+  });
+  fileDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    fileDropzone.classList.remove("drag-active");
+    if (e.dataTransfer.files.length) {
+      logFileInput.files = e.dataTransfer.files;
+      handleFileSelection(e.dataTransfer.files[0]);
+    }
+  });
+}
 
 document.querySelectorAll(".result-tab").forEach(tab => {
   tab.addEventListener("click", () => {
@@ -468,3 +476,148 @@ ragQueryForm.addEventListener("submit", async (event) => {
 checkHealth();
 loadRagSettings();
 loadRagFiles();
+
+// UNIX CHECKER FEATURE
+const unixFileDropzone = document.getElementById("unixFileDropzone");
+const unixFileInput = document.getElementById("unixFile");
+const unixDropText = document.getElementById("unixDropText");
+const unixResultsPanel = document.getElementById("unixResultsPanel");
+const unixFilename = document.getElementById("unixFilename");
+const unixStatusBadge = document.getElementById("unixStatusBadge");
+const unixLineEndingsVal = document.getElementById("unixLineEndingsVal");
+const unixFileTypeVal = document.getElementById("unixFileTypeVal");
+const unixCompatibleVal = document.getElementById("unixCompatibleVal");
+const unixRecommendation = document.getElementById("unixRecommendation");
+
+let currentUnixFile = null;
+
+if (unixFileInput) {
+  unixFileInput.addEventListener("change", () => {
+    handleUnixFileSelect(unixFileInput.files[0]);
+  });
+}
+
+if (unixFileDropzone && unixFileInput) {
+  unixFileDropzone.addEventListener("click", (e) => {
+    if (e.target !== unixFileInput) {
+      unixFileInput.click();
+    }
+  });
+
+  unixFileDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    unixFileDropzone.classList.add("drag-active");
+  });
+  unixFileDropzone.addEventListener("dragleave", () => {
+    unixFileDropzone.classList.remove("drag-active");
+  });
+  unixFileDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    unixFileDropzone.classList.remove("drag-active");
+    if (e.dataTransfer.files.length) {
+      unixFileInput.files = e.dataTransfer.files;
+      handleUnixFileSelect(e.dataTransfer.files[0]);
+    }
+  });
+}
+
+function handleUnixFileSelect(file) {
+  if (!file) {
+    unixDropText.textContent = "Click or drag any file here to verify line endings";
+    unixResultsPanel.style.display = "none";
+    currentUnixFile = null;
+    return;
+  }
+  currentUnixFile = file;
+  unixDropText.textContent = file.name;
+  verifyUnixFormat(file);
+}
+
+async function verifyUnixFormat(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const response = await fetch("/api/check-unix", {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json();
+    if (data.success) {
+      displayUnixResults(data);
+    } else {
+      showUnixError(data.error || "Verification failed");
+    }
+  } catch (err) {
+    showUnixError(err.message);
+  }
+}
+
+function displayUnixResults(data) {
+  unixResultsPanel.style.display = "flex";
+  unixFilename.textContent = data.filename;
+  
+  unixStatusBadge.className = `format-badge ${data.isUnix ? "unix" : "non-unix"}`;
+  unixStatusBadge.textContent = data.lineEndings;
+
+  unixLineEndingsVal.textContent = data.lineEndings;
+  unixFileTypeVal.textContent = data.lineEndings === "Binary File" ? "Binary" : "Text";
+  unixCompatibleVal.textContent = data.isUnix ? "Yes" : "No";
+
+  unixRecommendation.innerHTML = "";
+  if (data.isUnix) {
+    unixRecommendation.className = "unix-recommendation clean";
+    unixRecommendation.textContent = "✓ This file uses Unix-compatible LF line endings. It is ready for use on Linux/Unix systems.";
+  } else if (data.lineEndings === "Binary File") {
+    unixRecommendation.className = "unix-recommendation clean";
+    unixRecommendation.textContent = "ℹ This is a binary file. Line ending verification is only applicable to text files.";
+  } else {
+    unixRecommendation.className = "unix-recommendation warning";
+    
+    const text = document.createElement("div");
+    text.textContent = "⚠ This file uses Windows-style CRLF or Mac-style CR line endings. It may cause errors when executed on Unix systems.";
+    
+    const convertBtn = document.createElement("button");
+    convertBtn.className = "primary-btn small-btn action-btn";
+    convertBtn.textContent = "Convert to Unix (LF) & Download";
+    convertBtn.addEventListener("click", () => downloadConvertedFile(currentUnixFile));
+    
+    unixRecommendation.append(text, convertBtn);
+  }
+}
+
+function showUnixError(msg) {
+  unixResultsPanel.style.display = "flex";
+  unixFilename.textContent = "Error";
+  unixStatusBadge.className = "format-badge non-unix";
+  unixStatusBadge.textContent = "Failed";
+  unixLineEndingsVal.textContent = "Error";
+  unixFileTypeVal.textContent = "Error";
+  unixCompatibleVal.textContent = "Unknown";
+  unixRecommendation.className = "unix-recommendation warning";
+  unixRecommendation.textContent = "An error occurred: " + msg;
+}
+
+async function downloadConvertedFile(file) {
+  if (!file) return;
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const response = await fetch("/api/convert-unix", {
+      method: "POST",
+      body: formData
+    });
+    if (!response.ok) throw new Error("Conversion failed on server");
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (err) {
+    alert("Error converting file: " + err.message);
+  }
+}

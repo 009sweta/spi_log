@@ -27,6 +27,10 @@
           <span class="nav-icon">KB</span>
           <span>Knowledge Base</span>
         </button>
+        <button class="nav-item" type="button" data-tab="unixView">
+          <span class="nav-icon">UC</span>
+          <span>Unix Checker</span>
+        </button>
       </nav>
 
       <div class="sidebar-status">
@@ -237,6 +241,55 @@
               <input id="ragQuery" type="text" autocomplete="off" placeholder="Ask about alarm causes, classes, or corrective actions">
               <button id="askRagBtn" class="primary-btn" type="submit">Ask</button>
             </form>
+          </section>
+        </div>
+      </section>
+
+      <section class="page-view" id="unixView">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">File System Utilities</p>
+            <h2>Unix Checker</h2>
+          </div>
+        </header>
+
+        <div class="unix-checker-container">
+          <section class="panel unix-panel">
+            <div class="panel-title">
+              <h3>Verify File Format</h3>
+            </div>
+            
+            <div class="field file-dropzone" id="unixFileDropzone">
+              <input id="unixFile" type="file" required class="hidden-input">
+              <div class="drop-content">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <span class="drop-text" id="unixDropText">Click or drag any file here to verify line endings</span>
+              </div>
+            </div>
+
+            <div id="unixResultsPanel" class="unix-results-panel" style="display: none;">
+              <div class="unix-result-header">
+                <h4 id="unixFilename">-</h4>
+                <span id="unixStatusBadge" class="format-badge">-</span>
+              </div>
+              <div class="unix-detail-grid">
+                <div class="detail-item">
+                  <span class="label">Line Endings:</span>
+                  <span class="value" id="unixLineEndingsVal">-</span>
+                </div>
+                <div class="detail-item">
+                  <span class="label">File Type:</span>
+                  <span class="value" id="unixFileTypeVal">-</span>
+                </div>
+                <div class="detail-item">
+                  <span class="label">Unix Compatible:</span>
+                  <span class="value" id="unixCompatibleVal">-</span>
+                </div>
+              </div>
+              <div class="unix-recommendation" id="unixRecommendation">
+                <!-- Recommendations will appear here -->
+              </div>
+            </div>
           </section>
         </div>
       </section>

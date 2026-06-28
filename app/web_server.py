@@ -194,6 +194,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/check-unix":
             self._handle_check_unix()
             return
+        if parsed.path == "/api/convert-unix":
+            self._handle_convert_unix()
+            return
         if parsed.path == "/api/open":
             self._handle_open()
             return
@@ -304,6 +307,31 @@ class Handler(BaseHTTPRequestHandler):
                 "isUnix": is_unix,
                 "lineEndings": line_endings
             })
+        except Exception as exc:
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
+
+    def _handle_convert_unix(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(content_length)
+            fields, files = _parse_multipart(self.headers.get("Content-Type", ""), body)
+            upload_items = files.get("file") or []
+            upload = upload_items[0] if upload_items else None
+            if not upload or not upload["content"]:
+                _json_response(self, HTTPStatus.BAD_REQUEST, {"success": False, "error": "No file uploaded."})
+                return
+
+            content = upload["content"]
+            filename = upload["filename"]
+            
+            converted_content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(converted_content)))
+            self.end_headers()
+            self.wfile.write(converted_content)
         except Exception as exc:
             _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
 
