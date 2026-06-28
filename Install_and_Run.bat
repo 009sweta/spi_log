@@ -190,6 +190,12 @@ if !errorlevel! neq 0 (
     !PYTHON_CMD! -m pip install --user --quiet --disable-pip-version-check pandas openpyxl chardet pypdf
 )
 
+REM Best-effort: install truststore so the AI Assistant feature can fall back
+REM to the Windows certificate store on company laptops with SSL-inspecting
+REM proxies. Not required for Python < 3.10 or if offline, so failures here
+REM are ignored.
+!PYTHON_CMD! -m pip install --quiet --disable-pip-version-check truststore >nul 2>&1
+
 REM Verify packages installed correctly
 !PYTHON_CMD! -c "import pandas, openpyxl, chardet, pypdf" >nul 2>&1
 if !errorlevel! equ 0 (
