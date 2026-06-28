@@ -206,7 +206,7 @@ def request_json(url, headers, payload):
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"HTTP {exc.code}: {body}") from exc
     except ssl.SSLCertVerificationError as exc:
-        if os.environ.get("SPU_ALLOW_INSECURE_SSL") == "1":
+        if get_setting("SPU_ALLOW_INSECURE_SSL") == "1":
             with _build_opener(insecure=True).open(request, timeout=90) as response:
                 return json.loads(response.read().decode("utf-8"))
         raise RuntimeError(
@@ -235,24 +235,33 @@ def get_embeddings(texts, api_key, input_type):
     clean = [text.strip() for text in texts if text.strip()]
     if not clean:
         return []
-    payload = {
-        "model": OPENROUTER_EMBEDDING_MODEL,
-        "input": clean,
-        "input_type": input_type,
-    }
-    data = request_json(
-        "https://openrouter.ai/api/v1/embeddings",
-        {
+    if api_key == "ollama":
+        url = "http://localhost:11434/v1/embeddings"
+        model_name = get_setting("OLLAMA_EMBED_MODEL") or get_setting("GROQ_MODEL") or "nomic-embed-text"
+        payload = {
+            "model": model_name,
+            "input": clean,
+        }
+        headers = {
+            "Content-Type": "application/json",
+        }
+    else:
+        url = "https://openrouter.ai/api/v1/embeddings"
+        payload = {
+            "model": OPENROUTER_EMBEDDING_MODEL,
+            "input": clean,
+            "input_type": input_type,
+        }
+        headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "http://127.0.0.1:8080",
             "X-Title": "SPU Log Analyzer",
-        },
-        payload,
-    )
+        }
+    data = request_json(url, headers, payload)
     embeddings = sorted(data.get("data", []), key=lambda item: item.get("index", 0))
     if not embeddings:
-        raise RuntimeError("OpenRouter returned no embeddings.")
+        raise RuntimeError("OpenRouter/Ollama returned no embeddings.")
     return [item["embedding"] for item in embeddings]
 
 
@@ -389,12 +398,20 @@ def query_groq(query, context, model=None):
         "the answer, say that clearly and give the best next diagnostic step.\n\n"
         f"Retrieved context:\n{context or 'No matching context was retrieved.'}"
     )
-    data = request_json(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
+    if groq_key == "ollama":
+        url = "http://localhost:11434/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+        }
+    else:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
             "Authorization": f"Bearer {groq_key}",
             "Content-Type": "application/json",
-        },
+        }
+    data = request_json(
+        url,
+        headers,
         {
             "model": model,
             "messages": [
@@ -406,7 +423,7 @@ def query_groq(query, context, model=None):
     )
     choices = data.get("choices") or []
     if not choices:
-        raise RuntimeError("Groq returned no completion.")
+        raise RuntimeError("LLM returned no completion.")
     return choices[0]["message"]["content"]
 
 
