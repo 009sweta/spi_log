@@ -38,12 +38,51 @@ const fileDropzone = document.getElementById("fileDropzone");
 const logFileInput = document.getElementById("logFile");
 const dropText = document.getElementById("dropText");
 
-logFileInput.addEventListener("change", () => {
-  if (logFileInput.files.length > 0) {
-    dropText.textContent = logFileInput.files[0].name;
+async function checkUnixFormat(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const response = await fetch("/api/check-unix", {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json();
+    if (data.success) {
+      addLog(`File check: ${data.filename} format is ${data.lineEndings} (${data.isUnix ? "Unix LF" : "Not Unix"}).`);
+      
+      const badgeClass = data.isUnix ? "unix" : "non-unix";
+      dropText.innerHTML = `${escapeHTML(file.name)} <span class="format-badge ${badgeClass}">${data.lineEndings}</span>`;
+    } else {
+      addLog(`Format check failed: ${data.error}`);
+    }
+  } catch (err) {
+    addLog(`Format check error: ${err.message}`);
+  }
+}
+
+function escapeHTML(str) {
+  return str.replace(/[&<>'"]/g, 
+    tag => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[tag] || tag)
+  );
+}
+
+function handleFileSelection(file) {
+  if (file) {
+    dropText.textContent = "Checking format...";
+    checkUnixFormat(file);
   } else {
     dropText.textContent = "Click or drag SPU log file here";
   }
+}
+
+logFileInput.addEventListener("change", () => {
+  handleFileSelection(logFileInput.files[0]);
 });
 
 fileDropzone.addEventListener("dragover", (e) => {
@@ -58,7 +97,7 @@ fileDropzone.addEventListener("drop", (e) => {
   fileDropzone.classList.remove("drag-active");
   if (e.dataTransfer.files.length) {
     logFileInput.files = e.dataTransfer.files;
-    dropText.textContent = e.dataTransfer.files[0].name;
+    handleFileSelection(e.dataTransfer.files[0]);
   }
 });
 

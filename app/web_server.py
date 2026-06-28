@@ -191,6 +191,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/analyze":
             self._handle_analyze()
             return
+        if parsed.path == "/api/check-unix":
+            self._handle_check_unix()
+            return
         if parsed.path == "/api/open":
             self._handle_open()
             return
@@ -255,6 +258,54 @@ class Handler(BaseHTTPRequestHandler):
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"success": False, "error": str(exc), "trace": traceback.format_exc()},
             )
+
+    def _handle_check_unix(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(content_length)
+            fields, files = _parse_multipart(self.headers.get("Content-Type", ""), body)
+            upload_items = files.get("file") or []
+            upload = upload_items[0] if upload_items else None
+            if not upload or not upload["content"]:
+                _json_response(self, HTTPStatus.BAD_REQUEST, {"success": False, "error": "No file uploaded."})
+                return
+
+            content = upload["content"]
+            filename = upload["filename"]
+            
+            is_unix = False
+            line_endings = "Unknown"
+            
+            if content:
+                is_binary = b"\x00" in content[:8192]
+                if is_binary:
+                    line_endings = "Binary File"
+                    is_unix = False
+                else:
+                    if b"\r\n" in content:
+                        line_endings = "Windows (CRLF)"
+                        is_unix = False
+                    elif b"\n" in content:
+                        line_endings = "Unix (LF)"
+                        is_unix = True
+                    elif b"\r" in content:
+                        line_endings = "Mac (CR)"
+                        is_unix = False
+                    else:
+                        line_endings = "Single Line"
+                        is_unix = True
+            else:
+                line_endings = "Empty File"
+                is_unix = True
+
+            _json_response(self, HTTPStatus.OK, {
+                "success": True,
+                "filename": filename,
+                "isUnix": is_unix,
+                "lineEndings": line_endings
+            })
+        except Exception as exc:
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
 
     def _handle_open(self):
         try:
