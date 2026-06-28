@@ -4,9 +4,11 @@ import json
 import math
 import os
 import re
+import socket
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -77,6 +79,33 @@ def save_env_values(updates):
 
 def get_setting(key, default=""):
     return os.environ.get(key) or load_env_file().get(key, default)
+
+
+def _build_opener(insecure=False):
+    """
+    Build a urllib opener that honors an explicitly configured corporate
+    proxy. Needed because some corporate networks only resolve/route
+    external domains through a proxy — direct connections fail DNS
+    resolution with [Errno 11001] getaddrinfo failed. Set HTTPS_PROXY
+    (and HTTP_PROXY if needed) in the .env file at the project root, e.g.:
+        HTTPS_PROXY=http://proxyhost:8080
+        HTTPS_PROXY=http://user:password@proxyhost:8080   (if auth required)
+    If nothing is configured, falls back to the normal default opener
+    (which still honors OS/env proxy settings automatically).
+    """
+    handlers = []
+    https_proxy = get_setting("HTTPS_PROXY") or get_setting("https_proxy")
+    http_proxy = get_setting("HTTP_PROXY") or get_setting("http_proxy")
+    proxies = {}
+    if https_proxy:
+        proxies["https"] = https_proxy
+    if http_proxy:
+        proxies["http"] = http_proxy
+    if proxies:
+        handlers.append(urllib.request.ProxyHandler(proxies))
+    if insecure:
+        handlers.append(urllib.request.HTTPSHandler(context=_insecure_ssl_context()))
+    return urllib.request.build_opener(*handlers)
 
 
 def mask_key(value):
@@ -171,14 +200,14 @@ def request_json(url, headers, payload):
         req_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     request = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        with _build_opener().open(request, timeout=90) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"HTTP {exc.code}: {body}") from exc
     except ssl.SSLCertVerificationError as exc:
         if os.environ.get("SPU_ALLOW_INSECURE_SSL") == "1":
-            with urllib.request.urlopen(request, timeout=90, context=_insecure_ssl_context()) as response:
+            with _build_opener(insecure=True).open(request, timeout=90) as response:
                 return json.loads(response.read().decode("utf-8"))
         raise RuntimeError(
             "SSL certificate verification failed. This is usually caused by a "
@@ -187,6 +216,19 @@ def request_json(url, headers, payload):
             "set the environment variable SPU_ALLOW_INSECURE_SSL=1 and restart "
             "the app — see README.txt for instructions."
         ) from exc
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, socket.gaierror):
+            host = urllib.parse.urlparse(url).hostname
+            raise RuntimeError(
+                f"Could not resolve '{host}' (DNS lookup failed, errno 11001). "
+                "This network likely requires going through a corporate proxy "
+                "to reach external sites — direct connections aren't routed at "
+                "all, which is different from the SSL-inspection issue. Ask your "
+                "IT team for the proxy address, then add it to the .env file at "
+                "the project root as HTTPS_PROXY=http://proxyhost:port and "
+                "restart the app. See README.txt for details."
+            ) from exc
+        raise
 
 
 def get_embeddings(texts, api_key, input_type):
