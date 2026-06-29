@@ -252,38 +252,24 @@ def request_json(url, headers, payload):
         raise
 
 
-def get_embeddings(texts, api_key, input_type):
+def get_embeddings(texts, api_key=None, input_type=None):
     clean = [text.strip() for text in texts if text.strip()]
     if not clean:
         return []
-    if api_key == "ollama":
-        ollama_host = get_setting("OLLAMA_HOST") or "http://localhost:11434"
-        url = f"{ollama_host.rstrip('/')}/v1/embeddings"
-        model_name = get_setting("OLLAMA_EMBED_MODEL") or get_setting("GROQ_MODEL") or "nomic-embed-text"
-        payload = {
-            "model": model_name,
-            "input": clean,
-        }
-        headers = {
-            "Content-Type": "application/json",
-        }
-    else:
-        url = "https://openrouter.ai/api/v1/embeddings"
-        payload = {
-            "model": OPENROUTER_EMBEDDING_MODEL,
-            "input": clean,
-            "input_type": input_type,
-        }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "http://127.0.0.1:8080",
-            "X-Title": "SPU Log Analyzer",
-        }
+    ollama_host = get_setting("OLLAMA_HOST") or "http://localhost:11434"
+    url = f"{ollama_host.rstrip('/')}/v1/embeddings"
+    model_name = get_setting("OLLAMA_EMBED_MODEL") or "nomic-embed-text"
+    payload = {
+        "model": model_name,
+        "input": clean,
+    }
+    headers = {
+        "Content-Type": "application/json",
+    }
     data = request_json(url, headers, payload)
     embeddings = sorted(data.get("data", []), key=lambda item: item.get("index", 0))
     if not embeddings:
-        raise RuntimeError("OpenRouter/Ollama returned no embeddings.")
+        raise RuntimeError("Ollama returned no embeddings.")
     return [item["embedding"] for item in embeddings]
 
 
@@ -304,9 +290,7 @@ def cosine_similarity(a, b):
 
 def ingest_documents(log_fn=None):
     ensure_dirs()
-    openrouter_key = get_setting("OPENROUTER_API_KEY")
-    if not openrouter_key:
-        raise RuntimeError("OpenRouter API key is missing.")
+    openrouter_key = get_setting("OPENROUTER_API_KEY") or "ollama"
 
     def log(message):
         if log_fn:
@@ -382,9 +366,7 @@ def ingest_documents(log_fn=None):
 
 
 def retrieve_context(query, top_k=4):
-    openrouter_key = get_setting("OPENROUTER_API_KEY")
-    if not openrouter_key:
-        raise RuntimeError("OpenRouter API key is missing.")
+    openrouter_key = get_setting("OPENROUTER_API_KEY") or "ollama"
 
     db = load_vector_db()
     docs = db.get("documents", [])
@@ -409,29 +391,18 @@ def retrieve_context(query, top_k=4):
 
 
 def query_groq(query, context, model=None):
-    groq_key = get_setting("GROQ_API_KEY")
-    if not groq_key:
-        raise RuntimeError("Groq API key is missing.")
-
-    model = model or get_setting("GROQ_MODEL", GROQ_DEFAULT_MODEL)
+    model = model or get_setting("GROQ_MODEL") or "01rohitkumar0104/tess"
     system_prompt = (
         "You are an SPU fault analysis assistant. Answer using the retrieved "
         "document context when it is relevant. If the context does not contain "
         "the answer, say that clearly and give the best next diagnostic step.\n\n"
         f"Retrieved context:\n{context or 'No matching context was retrieved.'}"
     )
-    if groq_key == "ollama":
-        ollama_host = get_setting("OLLAMA_HOST") or "http://localhost:11434"
-        url = f"{ollama_host.rstrip('/')}/v1/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-        }
-    else:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {groq_key}",
-            "Content-Type": "application/json",
-        }
+    ollama_host = get_setting("OLLAMA_HOST") or "http://localhost:11434"
+    url = f"{ollama_host.rstrip('/')}/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+    }
     data = request_json(
         url,
         headers,
@@ -446,7 +417,7 @@ def query_groq(query, context, model=None):
     )
     choices = data.get("choices") or []
     if not choices:
-        raise RuntimeError("LLM returned no completion.")
+        raise RuntimeError("Local LLM returned no completion.")
     return choices[0]["message"]["content"]
 
 
