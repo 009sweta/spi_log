@@ -1,0 +1,3 @@
+Line 1 with Windows CRLF.
+Line 2 with Windows CRLF.
+Line 3 with Windows CRLF.

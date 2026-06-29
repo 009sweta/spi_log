@@ -1,0 +1,4 @@
+This is a test file.
+It is configured with Unix line endings.
+Every line ends with a single line feed (LF) character.
+This should be detected as compliant by the Unix Checker.

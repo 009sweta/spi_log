@@ -478,28 +478,113 @@ loadRagSettings();
 loadRagFiles();
 
 // UNIX CHECKER FEATURE
+let workspaceRoot = "";
+let scannedUnixFiles = [];
+let activeUnixFilter = "all";
+
 const unixFileDropzone = document.getElementById("unixFileDropzone");
 const unixFileInput = document.getElementById("unixFile");
+const unixFolderInput = document.getElementById("unixFolder");
 const unixDropText = document.getElementById("unixDropText");
+const selectFilesLink = document.getElementById("selectFilesLink");
+const selectFolderLink = document.getElementById("selectFolderLink");
+
+const unixLocalPathInput = document.getElementById("unixLocalPath");
+const unixScanBtn = document.getElementById("unixScanBtn");
+const unixResetPathBtn = document.getElementById("unixResetPathBtn");
+
 const unixResultsPanel = document.getElementById("unixResultsPanel");
-const unixFilename = document.getElementById("unixFilename");
-const unixStatusBadge = document.getElementById("unixStatusBadge");
-const unixLineEndingsVal = document.getElementById("unixLineEndingsVal");
-const unixFileTypeVal = document.getElementById("unixFileTypeVal");
-const unixCompatibleVal = document.getElementById("unixCompatibleVal");
-const unixRecommendation = document.getElementById("unixRecommendation");
+const unixTotalFiles = document.getElementById("unixTotalFiles");
+const unixCompliantFiles = document.getElementById("unixCompliantFiles");
+const unixNonCompliantFiles = document.getElementById("unixNonCompliantFiles");
+const complianceScorePercent = document.getElementById("complianceScorePercent");
+const complianceRatioFill = document.getElementById("complianceRatioFill");
 
-let currentUnixFile = null;
+const unixReplaceAllBtn = document.getElementById("unixReplaceAllBtn");
+const unixDownloadAllBtn = document.getElementById("unixDownloadAllBtn");
+const unixFileSearch = document.getElementById("unixFileSearch");
+const unixFilesTableBody = document.getElementById("unixFilesTableBody");
 
-if (unixFileInput) {
-  unixFileInput.addEventListener("change", () => {
-    handleUnixFileSelect(unixFileInput.files[0]);
+const countAll = document.getElementById("countAll");
+const countNonUnix = document.getElementById("countNonUnix");
+const countUnix = document.getElementById("countUnix");
+const countBinary = document.getElementById("countBinary");
+
+// Load Workspace Info
+async function loadWorkspaceInfo() {
+  try {
+    const response = await fetch("/api/workspace-info");
+    const data = await response.json();
+    if (data.success && data.workspaceRoot) {
+      workspaceRoot = data.workspaceRoot;
+      if (unixLocalPathInput) {
+        unixLocalPathInput.value = workspaceRoot;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load workspace root path:", err);
+  }
+}
+
+// Hook up path scan controls
+if (unixScanBtn && unixLocalPathInput) {
+  unixScanBtn.addEventListener("click", () => {
+    const path = unixLocalPathInput.value.trim();
+    if (path) {
+      scanLocalPath(path);
+    }
   });
 }
 
-if (unixFileDropzone && unixFileInput) {
+if (unixResetPathBtn) {
+  unixResetPathBtn.addEventListener("click", () => {
+    if (unixLocalPathInput) {
+      unixLocalPathInput.value = workspaceRoot;
+    }
+  });
+}
+
+// File and folder selection links
+if (selectFilesLink && unixFileInput) {
+  selectFilesLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    unixFileInput.click();
+  });
+}
+
+if (selectFolderLink && unixFolderInput) {
+  selectFolderLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    unixFolderInput.click();
+  });
+}
+
+if (unixFileInput) {
+  unixFileInput.addEventListener("change", () => {
+    if (unixFileInput.files.length) {
+      handleBrowserFiles(Array.from(unixFileInput.files));
+    }
+  });
+}
+
+if (unixFolderInput) {
+  unixFolderInput.addEventListener("change", () => {
+    if (unixFolderInput.files.length) {
+      const files = Array.from(unixFolderInput.files).map(file => {
+        file.relativePath = file.webkitRelativePath || file.name;
+        return file;
+      });
+      handleBrowserFiles(files);
+    }
+  });
+}
+
+// Drag & Drop Folder/Files
+if (unixFileDropzone) {
   unixFileDropzone.addEventListener("click", (e) => {
-    if (e.target !== unixFileInput) {
+    if (e.target !== selectFilesLink && e.target !== selectFolderLink && e.target !== unixFileInput && e.target !== unixFolderInput) {
       unixFileInput.click();
     }
   });
@@ -508,116 +593,462 @@ if (unixFileDropzone && unixFileInput) {
     e.preventDefault();
     unixFileDropzone.classList.add("drag-active");
   });
+
   unixFileDropzone.addEventListener("dragleave", () => {
     unixFileDropzone.classList.remove("drag-active");
   });
-  unixFileDropzone.addEventListener("drop", (e) => {
+
+  unixFileDropzone.addEventListener("drop", async (e) => {
     e.preventDefault();
     unixFileDropzone.classList.remove("drag-active");
-    if (e.dataTransfer.files.length) {
-      unixFileInput.files = e.dataTransfer.files;
-      handleUnixFileSelect(e.dataTransfer.files[0]);
+    
+    const items = e.dataTransfer.items;
+    if (items && items.length) {
+      const files = [];
+      const traversePromises = [];
+      
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === "file") {
+          const entry = item.webkitGetAsEntry();
+          if (entry) {
+            traversePromises.push(traverseDirectoryEntry(entry).then(childFiles => {
+              files.push(...childFiles);
+            }));
+          }
+        }
+      }
+      
+      await Promise.all(traversePromises);
+      if (files.length) {
+        handleBrowserFiles(files);
+      }
+    } else if (e.dataTransfer.files.length) {
+      handleBrowserFiles(Array.from(e.dataTransfer.files));
     }
   });
 }
 
-function handleUnixFileSelect(file) {
-  if (!file) {
-    unixDropText.textContent = "Click or drag any file here to verify line endings";
-    unixResultsPanel.style.display = "none";
-    currentUnixFile = null;
-    return;
+// Helper for recursive dir entry traversal
+async function traverseDirectoryEntry(entry, path = "") {
+  const files = [];
+  if (entry.isFile) {
+    const file = await new Promise((resolve) => entry.file(resolve));
+    file.relativePath = path ? `${path}/${file.name}` : file.name;
+    files.push(file);
+  } else if (entry.isDirectory) {
+    const dirReader = entry.createReader();
+    const entries = await new Promise((resolve) => {
+      dirReader.readEntries(resolve);
+    });
+    for (const childEntry of entries) {
+      const childFiles = await traverseDirectoryEntry(childEntry, path ? `${path}/${entry.name}` : entry.name);
+      files.push(...childFiles);
+    }
   }
-  currentUnixFile = file;
-  unixDropText.textContent = file.name;
-  verifyUnixFormat(file);
+  return files;
 }
 
-async function verifyUnixFormat(file) {
-  const formData = new FormData();
-  formData.append("file", file);
+// Scan absolute path on server
+async function scanLocalPath(path) {
+  if (!path) return;
+  unixScanBtn.disabled = true;
+  unixScanBtn.textContent = "Scanning...";
+  unixResultsPanel.style.display = "block";
+  unixFilesTableBody.innerHTML = `<tr><td colspan="4" class="text-center">Scanning local path...</td></tr>`;
+  
   try {
-    const response = await fetch("/api/check-unix", {
+    const response = await fetch("/api/unix/scan-local", {
       method: "POST",
-      body: formData
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path })
     });
     const data = await response.json();
     if (data.success) {
-      displayUnixResults(data);
+      addLog(`[Debug] Scan local response: ${JSON.stringify(data.files)}`);
+      scannedUnixFiles = data.files.map(f => ({
+        name: f.filename,
+        path: f.path,
+        relativePath: f.relativePath,
+        lineEndings: f.lineEndings,
+        isUnix: f.isUnix,
+        fileType: f.fileType,
+        local: true
+      }));
+      renderUnixBundle();
+      addLog(`Scanned local path: ${path}. Found ${scannedUnixFiles.length} files.`);
     } else {
-      showUnixError(data.error || "Verification failed");
+      unixFilesTableBody.innerHTML = `<tr><td colspan="4" class="text-center text-error">Scan failed: ${escapeHTML(data.error)}</td></tr>`;
+      alert("Scan failed: " + data.error);
     }
   } catch (err) {
-    showUnixError(err.message);
+    unixFilesTableBody.innerHTML = `<tr><td colspan="4" class="text-center text-error">Scan error: ${escapeHTML(err.message)}</td></tr>`;
+    alert("Error scanning path: " + err.message);
+  } finally {
+    unixScanBtn.disabled = false;
+    unixScanBtn.textContent = "Scan Path";
   }
 }
 
-function displayUnixResults(data) {
-  unixResultsPanel.style.display = "flex";
-  unixFilename.textContent = data.filename;
+// Handle uploaded files/directories in-browser
+async function handleBrowserFiles(files) {
+  scannedUnixFiles = [];
+  unixResultsPanel.style.display = "block";
   
-  unixStatusBadge.className = `format-badge ${data.isUnix ? "unix" : "non-unix"}`;
-  unixStatusBadge.textContent = data.lineEndings;
-
-  unixLineEndingsVal.textContent = data.lineEndings;
-  unixFileTypeVal.textContent = data.lineEndings === "Binary File" ? "Binary" : "Text";
-  unixCompatibleVal.textContent = data.isUnix ? "Yes" : "No";
-
-  unixRecommendation.innerHTML = "";
-  if (data.isUnix) {
-    unixRecommendation.className = "unix-recommendation clean";
-    unixRecommendation.textContent = "✓ This file uses Unix-compatible LF line endings. It is ready for use on Linux/Unix systems.";
-  } else if (data.lineEndings === "Binary File") {
-    unixRecommendation.className = "unix-recommendation clean";
-    unixRecommendation.textContent = "ℹ This is a binary file. Line ending verification is only applicable to text files.";
-  } else {
-    unixRecommendation.className = "unix-recommendation warning";
-    
-    const text = document.createElement("div");
-    text.textContent = "⚠ This file uses Windows-style CRLF or Mac-style CR line endings. It may cause errors when executed on Unix systems.";
-    
-    const convertBtn = document.createElement("button");
-    convertBtn.className = "primary-btn small-btn action-btn";
-    convertBtn.textContent = "Convert to Unix (LF) & Download";
-    convertBtn.addEventListener("click", () => downloadConvertedFile(currentUnixFile));
-    
-    unixRecommendation.append(text, convertBtn);
-  }
-}
-
-function showUnixError(msg) {
-  unixResultsPanel.style.display = "flex";
-  unixFilename.textContent = "Error";
-  unixStatusBadge.className = "format-badge non-unix";
-  unixStatusBadge.textContent = "Failed";
-  unixLineEndingsVal.textContent = "Error";
-  unixFileTypeVal.textContent = "Error";
-  unixCompatibleVal.textContent = "Unknown";
-  unixRecommendation.className = "unix-recommendation warning";
-  unixRecommendation.textContent = "An error occurred: " + msg;
-}
-
-async function downloadConvertedFile(file) {
-  if (!file) return;
-  const formData = new FormData();
-  formData.append("file", file);
-  try {
-    const response = await fetch("/api/convert-unix", {
-      method: "POST",
-      body: formData
+  unixTotalFiles.textContent = "-";
+  unixCompliantFiles.textContent = "-";
+  unixNonCompliantFiles.textContent = "-";
+  unixFilesTableBody.innerHTML = `<tr><td colspan="4" class="text-center">Analyzing ${files.length} files...</td></tr>`;
+  
+  for (let file of files) {
+    const result = await checkFileContentLocally(file);
+    scannedUnixFiles.push({
+      name: file.name,
+      path: "",
+      relativePath: file.relativePath || file.name,
+      lineEndings: result.lineEndings,
+      isUnix: result.isUnix,
+      fileType: result.fileType,
+      local: false,
+      content: file
     });
-    if (!response.ok) throw new Error("Conversion failed on server");
+  }
+  renderUnixBundle();
+  addLog(`Analyzed ${scannedUnixFiles.length} uploaded files/folders.`);
+}
+
+function checkFileContentLocally(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const arrayBuffer = e.target.result;
+      const view = new DataView(arrayBuffer);
+      
+      let isBinary = false;
+      const scanLength = Math.min(arrayBuffer.byteLength, 8192);
+      for (let i = 0; i < scanLength; i++) {
+        if (view.getUint8(i) === 0) {
+          isBinary = true;
+          break;
+        }
+      }
+      
+      if (isBinary) {
+        resolve({ isUnix: false, lineEndings: "Binary File", fileType: "Binary" });
+        return;
+      }
+      
+      const decoder = new TextDecoder("utf-8", { fatal: false });
+      const text = decoder.decode(arrayBuffer);
+      
+      addLog(`[Debug] Local file read "${file.name}" (size ${file.size} bytes). Text content starts with: ${JSON.stringify(text.substring(0, 100))}`);
+      
+      let isUnix = false;
+      let lineEndings = "Unknown";
+      
+      if (text.includes("\r\n")) {
+        lineEndings = "Windows (CRLF)";
+        isUnix = false;
+      } else if (text.includes("\n")) {
+        lineEndings = "Unix (LF)";
+        isUnix = true;
+      } else if (text.includes("\r")) {
+        lineEndings = "Mac (CR)";
+        isUnix = false;
+      } else {
+        lineEndings = text.length > 0 ? "Single Line" : "Empty File";
+        isUnix = true;
+      }
+      
+      resolve({ isUnix, lineEndings, fileType: "Text" });
+    };
+    reader.readAsArrayBuffer(file.slice(0, 1024 * 1024));
+  });
+}
+
+// Render the scanned files list, counts, filters
+function renderUnixBundle() {
+  if (!unixResultsPanel) return;
+
+  const total = scannedUnixFiles.length;
+  const compliant = scannedUnixFiles.filter(f => f.isUnix).length;
+  const nonCompliant = scannedUnixFiles.filter(f => !f.isUnix && f.fileType !== "Binary").length;
+  const binaryCount = scannedUnixFiles.filter(f => f.fileType === "Binary").length;
+
+  unixTotalFiles.textContent = total;
+  unixCompliantFiles.textContent = compliant;
+  unixNonCompliantFiles.textContent = nonCompliant;
+
+  const textFiles = total - binaryCount;
+  const score = textFiles > 0 ? Math.round((compliant / textFiles) * 100) : 100;
+  complianceScorePercent.textContent = `${score}%`;
+  complianceRatioFill.style.width = `${score}%`;
+
+  const nonUnixLocalPaths = scannedUnixFiles.filter(f => !f.isUnix && f.local && f.fileType !== "Binary").map(f => f.path);
+  const nonUnixAll = scannedUnixFiles.filter(f => !f.isUnix && f.fileType !== "Binary");
+
+  unixReplaceAllBtn.disabled = nonUnixLocalPaths.length === 0;
+  unixDownloadAllBtn.disabled = nonUnixAll.length === 0;
+
+  if (countAll) countAll.textContent = total;
+  if (countNonUnix) countNonUnix.textContent = nonCompliant;
+  if (countUnix) countUnix.textContent = compliant;
+  if (countBinary) countBinary.textContent = binaryCount;
+
+  filterAndRenderTable();
+}
+
+// Filter and render the rows in the table
+function filterAndRenderTable() {
+  if (!unixFilesTableBody) return;
+
+  const searchTerm = (unixFileSearch ? unixFileSearch.value : "").trim().toLowerCase();
+  
+  const filtered = scannedUnixFiles.filter(file => {
+    const matchesSearch = file.relativePath.toLowerCase().includes(searchTerm) || file.name.toLowerCase().includes(searchTerm);
+    if (!matchesSearch) return false;
+
+    if (activeUnixFilter === "non-unix") return !file.isUnix && file.fileType !== "Binary";
+    if (activeUnixFilter === "unix") return file.isUnix;
+    if (activeUnixFilter === "binary") return file.fileType === "Binary";
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    unixFilesTableBody.innerHTML = `<tr><td colspan="4" class="text-center">No files match the criteria.</td></tr>`;
+    return;
+  }
+
+  unixFilesTableBody.innerHTML = "";
+  filtered.forEach(file => {
+    const tr = document.createElement("tr");
+
+    const tdPath = document.createElement("td");
+    const fileIcon = document.createElement("span");
+    fileIcon.className = "file-icon-mini";
+    fileIcon.innerHTML = file.fileType === "Binary" 
+      ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>`
+      : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
     
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    const textSpan = document.createElement("span");
+    textSpan.className = "file-path-text";
+    textSpan.textContent = file.relativePath;
+    if (file.path) {
+      textSpan.title = file.path;
+    }
+    tdPath.append(fileIcon, textSpan);
+
+    const tdFormat = document.createElement("td");
+    const badge = document.createElement("span");
+    const badgeClass = file.isUnix ? "unix" : "non-unix";
+    badge.className = `format-badge ${badgeClass}`;
+    badge.textContent = file.lineEndings;
+    tdFormat.appendChild(badge);
+
+    const tdComp = document.createElement("td");
+    tdComp.textContent = file.isUnix ? "✓ Yes" : (file.fileType === "Binary" ? "ℹ N/A" : "✗ No");
+    tdComp.className = file.isUnix ? "text-success" : (file.fileType === "Binary" ? "text-muted" : "text-warning");
+
+    const tdAction = document.createElement("td");
+    tdAction.className = "td-actions";
+
+    if (file.fileType !== "Binary") {
+      if (!file.isUnix) {
+        if (file.local) {
+          const replaceBtn = document.createElement("button");
+          replaceBtn.className = "action-btn replace-btn";
+          replaceBtn.title = "Convert & Overwrite file at original path on disk";
+          replaceBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Replace`;
+          replaceBtn.addEventListener("click", () => replaceLocalFile(file));
+          tdAction.appendChild(replaceBtn);
+        }
+
+        const downloadBtn = document.createElement("button");
+        downloadBtn.className = "action-btn download-btn";
+        downloadBtn.title = "Download converted LF version via browser";
+        downloadBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download`;
+        downloadBtn.addEventListener("click", () => downloadFile(file));
+        tdAction.appendChild(downloadBtn);
+      } else {
+        const okSpan = document.createElement("span");
+        okSpan.className = "text-success small-text";
+        okSpan.textContent = "Ready";
+        tdAction.appendChild(okSpan);
+      }
+    } else {
+      const skipSpan = document.createElement("span");
+      skipSpan.className = "text-muted small-text";
+      skipSpan.textContent = "Binary (Skipped)";
+      tdAction.appendChild(skipSpan);
+    }
+
+    tr.append(tdPath, tdFormat, tdComp, tdAction);
+    unixFilesTableBody.appendChild(tr);
+  });
+}
+
+// Replace a local file in-place on server
+async function replaceLocalFile(file) {
+  try {
+    const response = await fetch("/api/unix/convert-and-replace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: file.path })
+    });
+    const data = await response.json();
+    if (data.success) {
+      file.isUnix = true;
+      file.lineEndings = "Unix (LF)";
+      renderUnixBundle();
+      addLog(`Replaced and converted file on disk: ${file.path}`);
+    } else {
+      alert("Replacement failed: " + data.errors.join("\n"));
+    }
   } catch (err) {
-    alert("Error converting file: " + err.message);
+    alert("Replacement error: " + err.message);
   }
 }
+
+// Download a single file
+async function downloadFile(file) {
+  if (file.local) {
+    try {
+      const response = await fetch("/api/unix/download-local", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: file.path })
+      });
+      if (!response.ok) throw new Error("Server download failed");
+      const blob = await response.blob();
+      triggerDownload(blob, file.name);
+      addLog(`Downloaded converted file: ${file.name}`);
+    } catch (err) {
+      alert("Download failed: " + err.message);
+    }
+  } else {
+    try {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const converted = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const blob = new Blob([converted], { type: "text/plain;charset=utf-8" });
+        triggerDownload(blob, file.name);
+        addLog(`Downloaded converted file: ${file.name}`);
+      };
+      reader.readAsText(file.content);
+    } catch (err) {
+      alert("Client conversion failed: " + err.message);
+    }
+  }
+}
+
+function triggerDownload(blob, filename) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+}
+
+// Bulk replace in source
+if (unixReplaceAllBtn) {
+  unixReplaceAllBtn.addEventListener("click", async () => {
+    const localNonUnix = scannedUnixFiles.filter(f => !f.isUnix && f.local && f.fileType !== "Binary");
+    if (!localNonUnix.length) return;
+
+    if (!confirm(`Are you sure you want to convert and replace ${localNonUnix.length} files in place on your local disk?`)) {
+      return;
+    }
+
+    unixReplaceAllBtn.disabled = true;
+    unixReplaceAllBtn.textContent = "Replacing...";
+
+    try {
+      const response = await fetch("/api/unix/convert-and-replace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: localNonUnix.map(f => f.path) })
+      });
+      const data = await response.json();
+      if (data.success) {
+        localNonUnix.forEach(file => {
+          file.isUnix = true;
+          file.lineEndings = "Unix (LF)";
+        });
+        renderUnixBundle();
+        addLog(`Successfully replaced ${data.convertedCount} files in-place.`);
+        if (data.errors && data.errors.length) {
+          addLog(`Encountered warnings:\n${data.errors.join("\n")}`);
+        }
+      } else {
+        alert("Batch replace failed: " + (data.errors || []).join("\n"));
+      }
+    } catch (err) {
+      alert("Batch replace error: " + err.message);
+    } finally {
+      unixReplaceAllBtn.textContent = "Replace All CRLF in Source";
+      unixReplaceAllBtn.disabled = false;
+    }
+  });
+}
+
+// Bulk download ZIP
+if (unixDownloadAllBtn) {
+  unixDownloadAllBtn.addEventListener("click", async () => {
+    const nonUnix = scannedUnixFiles.filter(f => !f.isUnix && f.fileType !== "Binary");
+    if (!nonUnix.length) return;
+
+    unixDownloadAllBtn.disabled = true;
+    unixDownloadAllBtn.textContent = "Zipping...";
+
+    const localFiles = nonUnix.filter(f => f.local).map(f => ({ path: f.path, zipPath: f.relativePath }));
+    
+    if (localFiles.length) {
+      try {
+        const response = await fetch("/api/unix/convert-and-download-zip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files: localFiles })
+        });
+        if (!response.ok) throw new Error("ZIP creation failed on server");
+        
+        const blob = await response.blob();
+        triggerDownload(blob, "unix_converted_files.zip");
+        addLog(`Downloaded ZIP containing ${localFiles.length} converted files.`);
+      } catch (err) {
+        alert("ZIP download failed: " + err.message);
+      } finally {
+        unixDownloadAllBtn.textContent = "Download Converted ZIP";
+        unixDownloadAllBtn.disabled = false;
+      }
+    } else {
+      addLog(`No local paths. Downloading ${nonUnix.length} files individually...`);
+      for (let file of nonUnix) {
+        await downloadFile(file);
+      }
+      unixDownloadAllBtn.textContent = "Download Converted ZIP";
+      unixDownloadAllBtn.disabled = false;
+    }
+  });
+}
+
+// Search filter binding
+if (unixFileSearch) {
+  unixFileSearch.addEventListener("input", filterAndRenderTable);
+}
+
+// Filter tabs binding
+document.querySelectorAll(".filter-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeUnixFilter = tab.dataset.filter;
+    filterAndRenderTable();
+  });
+});
+
+// Load workspace root and setup
+loadWorkspaceInfo();

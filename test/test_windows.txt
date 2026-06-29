@@ -1,0 +1,4 @@
+This is a test file.
+It is configured with Windows line endings.
+Every line ends with a carriage return and a line feed (CRLF).
+This should be detected as non-compliant by the Unix Checker.

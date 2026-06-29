@@ -164,6 +164,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
             return
+        if path == "/api/workspace-info":
+            self._handle_workspace_info()
+            return
 
         request_path = "index.html" if parsed.path in ("", "/") else unquote(parsed.path.lstrip("/"))
         file_path = (WEB_DIR / request_path).resolve()
@@ -196,6 +199,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/convert-unix":
             self._handle_convert_unix()
+            return
+        if parsed.path == "/api/unix/scan-local":
+            self._handle_unix_scan_local()
+            return
+        if parsed.path == "/api/unix/convert-and-replace":
+            self._handle_unix_convert_and_replace()
+            return
+        if parsed.path == "/api/unix/convert-and-download-zip":
+            self._handle_unix_convert_and_download_zip()
+            return
+        if parsed.path == "/api/unix/download-local":
+            self._handle_unix_download_local()
             return
         if parsed.path == "/api/open":
             self._handle_open()
@@ -429,6 +444,235 @@ class Handler(BaseHTTPRequestHandler):
                 return
             result = ask(query, model=payload.get("model"))
             _json_response(self, HTTPStatus.OK, {"success": True, **result})
+        except Exception as exc:
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
+
+    def _handle_workspace_info(self):
+        try:
+            _json_response(self, HTTPStatus.OK, {
+                "success": True,
+                "workspaceRoot": str(ROOT_DIR)
+            })
+        except Exception as exc:
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
+
+    def _handle_unix_scan_local(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+            target_path = payload.get("path")
+            if not target_path:
+                _json_response(self, HTTPStatus.BAD_REQUEST, {"success": False, "error": "Path is required."})
+                return
+            
+            target = Path(target_path).resolve()
+            if not target.exists():
+                _json_response(self, HTTPStatus.NOT_FOUND, {"success": False, "error": f"Path does not exist: {target_path}"})
+                return
+            
+            files_to_check = []
+            is_folder = False
+            
+            if target.is_file():
+                files_to_check.append(target)
+            else:
+                is_folder = True
+                exclude_dirs = {
+                    ".git", ".venv", "venv", "node_modules", "__pycache__",
+                    ".idea", ".vscode", "build", "dist", ".web_uploads"
+                }
+                for root, dirs, files in os.walk(target):
+                    dirs[:] = [d for d in dirs if d not in exclude_dirs and not d.startswith(".")]
+                    for file in files:
+                        file_path = Path(root) / file
+                        try:
+                            if file_path.stat().st_size > 10 * 1024 * 1024:
+                                continue
+                        except OSError:
+                            continue
+                        files_to_check.append(file_path)
+                        if len(files_to_check) >= 1000:
+                            break
+                    if len(files_to_check) >= 1000:
+                        break
+            
+            results = []
+            for fp in files_to_check:
+                try:
+                    if is_folder:
+                        rel_path = str(fp.relative_to(target))
+                    else:
+                        rel_path = fp.name
+                    
+                    with open(fp, "rb") as f:
+                        content = f.read()
+                    
+                    is_unix = False
+                    line_endings = "Unknown"
+                    file_type = "Text"
+                    
+                    if content:
+                        is_binary = b"\x00" in content[:8192]
+                        if is_binary:
+                            line_endings = "Binary File"
+                            is_unix = False
+                            file_type = "Binary"
+                        else:
+                            if b"\r\n" in content:
+                                line_endings = "Windows (CRLF)"
+                                is_unix = False
+                            elif b"\n" in content:
+                                line_endings = "Unix (LF)"
+                                is_unix = True
+                            elif b"\r" in content:
+                                line_endings = "Mac (CR)"
+                                is_unix = False
+                            else:
+                                line_endings = "Single Line"
+                                is_unix = True
+                    else:
+                        line_endings = "Empty File"
+                        is_unix = True
+                        
+                    results.append({
+                        "path": str(fp),
+                        "relativePath": rel_path.replace("\\", "/"),
+                        "filename": fp.name,
+                        "isUnix": is_unix,
+                        "lineEndings": line_endings,
+                        "fileType": file_type
+                    })
+                except Exception as e:
+                    results.append({
+                        "path": str(fp),
+                        "relativePath": fp.name,
+                        "filename": fp.name,
+                        "isUnix": False,
+                        "lineEndings": f"Error: {str(e)}",
+                        "fileType": "Unknown"
+                    })
+            
+            _json_response(self, HTTPStatus.OK, {
+                "success": True,
+                "isFolder": is_folder,
+                "targetPath": str(target),
+                "files": results
+            })
+        except Exception as exc:
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
+
+    def _handle_unix_convert_and_replace(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+            paths = payload.get("paths", [])
+            if not paths:
+                single_path = payload.get("path")
+                if single_path:
+                    paths = [single_path]
+            
+            if not paths:
+                _json_response(self, HTTPStatus.BAD_REQUEST, {"success": False, "error": "No file paths provided."})
+                return
+            
+            converted_count = 0
+            errors = []
+            
+            for path_str in paths:
+                fp = Path(path_str).resolve()
+                if not fp.is_file():
+                    errors.append(f"File not found: {path_str}")
+                    continue
+                try:
+                    with open(fp, "rb") as f:
+                        content = f.read()
+                    
+                    if b"\x00" in content[:8192]:
+                        errors.append(f"Skipped binary file: {path_str}")
+                        continue
+                    
+                    converted = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+                    with open(fp, "wb") as f:
+                        f.write(converted)
+                    converted_count += 1
+                except Exception as e:
+                    errors.append(f"Error converting {path_str}: {str(e)}")
+            
+            _json_response(self, HTTPStatus.OK, {
+                "success": len(errors) == 0 or converted_count > 0,
+                "convertedCount": converted_count,
+                "errors": errors
+            })
+        except Exception as exc:
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
+
+    def _handle_unix_convert_and_download_zip(self):
+        import zipfile
+        import io
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+            items = payload.get("files", [])
+            
+            if not items:
+                _json_response(self, HTTPStatus.BAD_REQUEST, {"success": False, "error": "No files provided."})
+                return
+            
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for item in items:
+                    path_str = item.get("path")
+                    zip_path = item.get("zipPath")
+                    if not path_str or not zip_path:
+                        continue
+                    
+                    fp = Path(path_str).resolve()
+                    if fp.is_file():
+                        try:
+                            with open(fp, "rb") as f:
+                                content = f.read()
+                            is_binary = b"\x00" in content[:8192]
+                            if not is_binary:
+                                content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+                            zip_file.writestr(zip_path, content)
+                        except Exception:
+                            continue
+            
+            zip_data = zip_buffer.getvalue()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="unix_converted_files.zip"')
+            self.send_header("Content-Length", str(len(zip_data)))
+            self.end_headers()
+            self.wfile.write(zip_data)
+        except Exception as exc:
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
+
+    def _handle_unix_download_local(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+            path_str = payload.get("path")
+            if not path_str:
+                _json_response(self, HTTPStatus.BAD_REQUEST, {"success": False, "error": "Path is required."})
+                return
+            fp = Path(path_str).resolve()
+            if not fp.is_file():
+                _json_response(self, HTTPStatus.NOT_FOUND, {"success": False, "error": "File not found."})
+                return
+            with open(fp, "rb") as f:
+                content = f.read()
+            
+            is_binary = b"\x00" in content[:8192]
+            if not is_binary:
+                content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{fp.name}"')
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
         except Exception as exc:
             _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
 

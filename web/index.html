@@ -256,38 +256,106 @@
         <div class="unix-checker-container">
           <section class="panel unix-panel">
             <div class="panel-title">
-              <h3>Verify File Format</h3>
+              <h3>Verify File & Folder Format</h3>
+            </div>
+
+            <!-- Path Scan Input -->
+            <div class="unix-scan-path-container">
+              <div class="field">
+                <span class="label-text">Local File or Folder Path</span>
+                <div class="path-input-group">
+                  <input id="unixLocalPath" type="text" placeholder="e.g., C:\projects\my-app" autocomplete="off">
+                  <button id="unixScanBtn" class="primary-btn" type="button">Scan Path</button>
+                  <button id="unixResetPathBtn" class="secondary-btn small-btn" type="button" title="Reset to Workspace Root">Reset</button>
+                </div>
+                <p class="helper-text">Enter an absolute path on your system to scan, or drag and drop files/folders below.</p>
+              </div>
             </div>
             
             <div class="field file-dropzone" id="unixFileDropzone">
-              <input id="unixFile" type="file" required class="hidden-input">
+              <input id="unixFile" type="file" multiple class="hidden-input">
+              <input id="unixFolder" type="file" webkitdirectory directory multiple class="hidden-input">
               <div class="drop-content">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                <span class="drop-text" id="unixDropText">Click or drag any file here to verify line endings</span>
+                <span class="drop-text" id="unixDropText">
+                  Drag & drop files or a folder here, or 
+                  <a href="#" id="selectFilesLink" class="inline-link">choose files</a> or 
+                  <a href="#" id="selectFolderLink" class="inline-link">choose a folder</a>
+                </span>
               </div>
             </div>
 
             <div id="unixResultsPanel" class="unix-results-panel" style="display: none;">
-              <div class="unix-result-header">
-                <h4 id="unixFilename">-</h4>
-                <span id="unixStatusBadge" class="format-badge">-</span>
+              <!-- Bundle Summary Card -->
+              <div class="bundle-summary-card">
+                <div class="summary-details">
+                  <div class="summary-stat">
+                    <span class="stat-num" id="unixTotalFiles">0</span>
+                    <span class="stat-lbl">Files Scanned</span>
+                  </div>
+                  <div class="summary-stat">
+                    <span class="stat-num text-success" id="unixCompliantFiles">0</span>
+                    <span class="stat-lbl">Unix LF (Compliant)</span>
+                  </div>
+                  <div class="summary-stat">
+                    <span class="stat-num text-warning" id="unixNonCompliantFiles">0</span>
+                    <span class="stat-lbl">Non-Unix (CRLF/CR)</span>
+                  </div>
+                </div>
+                
+                <!-- Compliance Progress Bar -->
+                <div class="compliance-ratio-container">
+                  <div class="compliance-ratio-header">
+                    <span>Compliance Score</span>
+                    <span id="complianceScorePercent">0%</span>
+                  </div>
+                  <div class="compliance-ratio-bar">
+                    <div class="compliance-ratio-fill" id="complianceRatioFill" style="width: 0%;"></div>
+                  </div>
+                </div>
+
+                <!-- Bulk Actions -->
+                <div class="bundle-bulk-actions">
+                  <button id="unixReplaceAllBtn" class="primary-btn" disabled>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    Replace All CRLF in Source
+                  </button>
+                  <button id="unixDownloadAllBtn" class="secondary-btn" disabled>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download Converted ZIP
+                  </button>
+                </div>
               </div>
-              <div class="unix-detail-grid">
-                <div class="detail-item">
-                  <span class="label">Line Endings:</span>
-                  <span class="value" id="unixLineEndingsVal">-</span>
+
+              <!-- Filters Panel -->
+              <div class="bundle-filters-bar">
+                <div class="search-input-wrapper">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  <input id="unixFileSearch" type="text" placeholder="Search files...">
                 </div>
-                <div class="detail-item">
-                  <span class="label">File Type:</span>
-                  <span class="value" id="unixFileTypeVal">-</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">Unix Compatible:</span>
-                  <span class="value" id="unixCompatibleVal">-</span>
+                <div class="filter-tabs">
+                  <button class="filter-tab active" data-filter="all">All (<span id="countAll">0</span>)</button>
+                  <button class="filter-tab" data-filter="non-unix">Non-Unix (<span id="countNonUnix">0</span>)</button>
+                  <button class="filter-tab" data-filter="unix">Unix LF (<span id="countUnix">0</span>)</button>
+                  <button class="filter-tab" data-filter="binary">Binary (<span id="countBinary">0</span>)</button>
                 </div>
               </div>
-              <div class="unix-recommendation" id="unixRecommendation">
-                <!-- Recommendations will appear here -->
+
+              <!-- Files Grid Table -->
+              <div class="files-table-container">
+                <table class="files-table">
+                  <thead>
+                    <tr>
+                      <th>File Name / Relative Path</th>
+                      <th>Format</th>
+                      <th>Compatible</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="unixFilesTableBody">
+                    <!-- File rows will be generated dynamically -->
+                  </tbody>
+                </table>
               </div>
             </div>
           </section>
