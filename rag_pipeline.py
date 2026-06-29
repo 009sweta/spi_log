@@ -391,7 +391,8 @@ def retrieve_context(query, top_k=4):
 
 
 def query_groq(query, context, model=None):
-    model = model or get_setting("GROQ_MODEL") or "01rohitkumar0104/tess"
+    if not model or model in ("llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "llama3-8b-8192"):
+        model = get_setting("GROQ_MODEL") or "01rohitkumar0104/tess"
     system_prompt = (
         "You are an SPU fault analysis assistant. Answer using the retrieved "
         "document context when it is relevant. If the context does not contain "

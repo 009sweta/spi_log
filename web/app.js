@@ -512,10 +512,12 @@ ragQueryForm.addEventListener("submit", async (event) => {
   renderHits([]);
 
   try {
+    const isLocal = llmProviderSelect ? llmProviderSelect.value === "local" : true;
+    const modelToSend = isLocal ? (ollamaChatModelInput ? ollamaChatModelInput.value.trim() : "01rohitkumar0104/tess") : (groqModelInput ? groqModelInput.value : "");
     const response = await fetch("/api/rag/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, model: groqModelInput.value }),
+      body: JSON.stringify({ query, model: modelToSend }),
     });
     const data = await response.json();
     if (!data.success) throw new Error(data.error || "Query failed");
