@@ -4,9 +4,11 @@ import json
 import math
 import os
 import re
+import socket
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -68,15 +70,59 @@ def load_env_file():
 def save_env_values(updates):
     values = load_env_file()
     for key, value in updates.items():
-        if value:
-            values[key] = value
+        if value is not None:
+            if value == "":
+                values.pop(key, None)
+                os.environ.pop(key, None)
+            else:
+                values[key] = value
+                os.environ[key] = value
     lines = [f"{key}={value}" for key, value in values.items()]
     ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    os.environ.update({key: value for key, value in updates.items() if value})
 
 
 def get_setting(key, default=""):
-    return os.environ.get(key) or load_env_file().get(key, default)
+    val = os.environ.get(key) or load_env_file().get(key)
+    if val:
+        return val
+    if key in ("GROQ_API_KEY", "OPENROUTER_API_KEY"):
+        return "ollama"
+    if key == "GROQ_MODEL":
+        api_key = os.environ.get("GROQ_API_KEY") or load_env_file().get("GROQ_API_KEY") or "ollama"
+        if api_key == "ollama":
+            return "01rohitkumar0104/tess"
+    if key == "OLLAMA_EMBED_MODEL":
+        return "nomic-embed-text"
+    if key == "OLLAMA_HOST":
+        return "http://localhost:11434"
+    return default
+
+
+def _build_opener(insecure=False):
+    """
+    Build a urllib opener that honors an explicitly configured corporate
+    proxy. Needed because some corporate networks only resolve/route
+    external domains through a proxy — direct connections fail DNS
+    resolution with [Errno 11001] getaddrinfo failed. Set HTTPS_PROXY
+    (and HTTP_PROXY if needed) in the .env file at the project root, e.g.:
+        HTTPS_PROXY=http://proxyhost:8080
+        HTTPS_PROXY=http://user:password@proxyhost:8080   (if auth required)
+    If nothing is configured, falls back to the normal default opener
+    (which still honors OS/env proxy settings automatically).
+    """
+    handlers = []
+    https_proxy = get_setting("HTTPS_PROXY") or get_setting("https_proxy")
+    http_proxy = get_setting("HTTP_PROXY") or get_setting("http_proxy")
+    proxies = {}
+    if https_proxy:
+        proxies["https"] = https_proxy
+    if http_proxy:
+        proxies["http"] = http_proxy
+    if proxies:
+        handlers.append(urllib.request.ProxyHandler(proxies))
+    if insecure:
+        handlers.append(urllib.request.HTTPSHandler(context=_insecure_ssl_context()))
+    return urllib.request.build_opener(*handlers)
 
 
 def mask_key(value):
@@ -171,22 +217,39 @@ def request_json(url, headers, payload):
         req_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     request = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        is_local = "localhost" in url or "127.0.0.1" in url
+        insecure = (get_setting("SPU_ALLOW_INSECURE_SSL") == "1")
+        opener = urllib.request.build_opener() if is_local else _build_opener(insecure=insecure)
+        with opener.open(request, timeout=90) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"HTTP {exc.code}: {body}") from exc
     except ssl.SSLCertVerificationError as exc:
-        if get_setting("SPU_ALLOW_INSECURE_SSL") == "1":
-            with urllib.request.urlopen(request, timeout=90, context=_insecure_ssl_context()) as response:
-                return json.loads(response.read().decode("utf-8"))
         raise RuntimeError(
             "SSL certificate verification failed. This is usually caused by a "
             "company network/proxy (e.g. Zscaler, Netskope) that inspects HTTPS "
-            "traffic with a non-standard certificate. If this keeps happening, "
-            "set the environment variable SPU_ALLOW_INSECURE_SSL=1 and restart "
-            "the app — see README.txt for instructions."
+            "traffic with a non-standard certificate. Please turn on 'Bypass SSL "
+            "Verification' in the API Settings panel."
         ) from exc
+    except urllib.error.URLError as exc:
+        reason = exc.reason
+        if isinstance(reason, socket.gaierror):
+            host = urllib.parse.urlparse(url).hostname
+            raise RuntimeError(
+                f"Could not resolve '{host}' (DNS lookup failed, errno 11001). "
+                "This network likely requires going through a corporate proxy "
+                "to reach external sites. Please check your proxy settings in the "
+                "API Settings panel."
+            ) from exc
+        elif "CERTIFICATE_VERIFY_FAILED" in str(reason) or (isinstance(reason, ssl.SSLError) and "verify failed" in str(reason).lower()):
+            raise RuntimeError(
+                "SSL certificate verification failed. This is usually caused by a "
+                "company network/proxy (e.g. Zscaler, Netskope) that inspects HTTPS "
+                "traffic with a non-standard certificate. Please turn on 'Bypass SSL "
+                "Verification' in the API Settings panel."
+            ) from exc
+        raise
 
 
 def get_embeddings(texts, api_key, input_type):
@@ -194,7 +257,8 @@ def get_embeddings(texts, api_key, input_type):
     if not clean:
         return []
     if api_key == "ollama":
-        url = "http://localhost:11434/v1/embeddings"
+        ollama_host = get_setting("OLLAMA_HOST") or "http://localhost:11434"
+        url = f"{ollama_host.rstrip('/')}/v1/embeddings"
         model_name = get_setting("OLLAMA_EMBED_MODEL") or get_setting("GROQ_MODEL") or "nomic-embed-text"
         payload = {
             "model": model_name,
@@ -357,7 +421,8 @@ def query_groq(query, context, model=None):
         f"Retrieved context:\n{context or 'No matching context was retrieved.'}"
     )
     if groq_key == "ollama":
-        url = "http://localhost:11434/v1/chat/completions"
+        ollama_host = get_setting("OLLAMA_HOST") or "http://localhost:11434"
+        url = f"{ollama_host.rstrip('/')}/v1/chat/completions"
         headers = {
             "Content-Type": "application/json",
         }

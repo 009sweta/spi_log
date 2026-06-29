@@ -184,7 +184,7 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
 .file-path, .doc-size { margin-top: 3px; color: var(--muted); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* RAG STYLES */
-.rag-settings-panel { display: none !important; }
+.rag-sidebar { display: flex; flex-direction: column; gap: var(--space-4); }
 .rag-grid { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
 .compact-pill { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--primary); background: rgba(255, 255, 255, 0.6); font-size: 12px; font-weight: 700; }
 .form-status { min-height: 18px; margin: 10px 0 0; color: var(--primary); font-size: 12px; font-weight: 600; }

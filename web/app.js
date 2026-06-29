@@ -7,9 +7,17 @@ const serverStatusText = document.getElementById("serverStatusText");
 
 const ragSettingsForm = document.getElementById("ragSettingsForm");
 const ragSettingsStatus = document.getElementById("ragSettingsStatus");
+const llmProviderSelect = document.getElementById("llmProvider");
+const cloudSettingsGroup = document.getElementById("cloudSettingsGroup");
+const localSettingsGroup = document.getElementById("localSettingsGroup");
 const openRouterKeyInput = document.getElementById("openRouterKey");
 const groqKeyInput = document.getElementById("groqKey");
 const groqModelInput = document.getElementById("groqModel");
+const ollamaHostInput = document.getElementById("ollamaHost");
+const ollamaChatModelInput = document.getElementById("ollamaChatModel");
+const ollamaEmbedModelInput = document.getElementById("ollamaEmbedModel");
+const httpsProxyInput = document.getElementById("httpsProxy");
+const spuAllowInsecureSslCheckbox = document.getElementById("spuAllowInsecureSsl");
 const embeddingModelLabel = document.getElementById("embeddingModelLabel");
 const groqModelLabel = document.getElementById("groqModelLabel");
 const ragUploadForm = document.getElementById("ragUploadForm");
@@ -284,16 +292,52 @@ analyzeForm.addEventListener("submit", async (event) => {
   }
 });
 
+// Toggle provider groups
+if (llmProviderSelect) {
+  llmProviderSelect.addEventListener("change", () => {
+    const isLocal = llmProviderSelect.value === "local";
+    cloudSettingsGroup.style.display = isLocal ? "none" : "block";
+    localSettingsGroup.style.display = isLocal ? "block" : "none";
+  });
+}
+
 async function loadRagSettings() {
   try {
     const response = await fetch("/api/rag/settings");
     const data = await response.json();
     if (!data.success) return;
-    openRouterKeyInput.placeholder = data.openRouterKey || "Used for Nvidia Nemotron embeddings";
-    groqKeyInput.placeholder = data.groqKey || "Used for the chat completion model";
-    groqModelInput.value = data.groqModel || "llama-3.3-70b-versatile";
-    embeddingModelLabel.textContent = `Embedding: ${data.embeddingModel}`;
-    groqModelLabel.textContent = `LLM: ${groqModelInput.value}`;
+
+    const isLocal = data.groqKey === "ollama" || data.openRouterKey === "ollama";
+    if (llmProviderSelect) {
+      llmProviderSelect.value = isLocal ? "local" : "cloud";
+    }
+    if (cloudSettingsGroup) {
+      cloudSettingsGroup.style.display = isLocal ? "none" : "block";
+    }
+    if (localSettingsGroup) {
+      localSettingsGroup.style.display = isLocal ? "block" : "none";
+    }
+
+    openRouterKeyInput.placeholder = data.openRouterKey && data.openRouterKey !== "ollama" ? data.openRouterKey : "sk-or-v1-...";
+    groqKeyInput.placeholder = data.groqKey && data.groqKey !== "ollama" ? data.groqKey : "gsk_...";
+    
+    if (isLocal) {
+      ollamaChatModelInput.value = data.groqModel || "llama3";
+    } else {
+      groqModelInput.value = data.groqModel || "llama-3.3-70b-versatile";
+    }
+
+    ollamaHostInput.value = data.ollamaHost || "";
+    ollamaEmbedModelInput.value = data.ollamaEmbedModel || "";
+    httpsProxyInput.value = data.httpsProxy || "";
+    spuAllowInsecureSslCheckbox.checked = !!data.allowInsecureSsl;
+
+    embeddingModelLabel.textContent = isLocal
+      ? `Embedding: ${data.ollamaEmbedModel || "nomic-embed-text"} (Local)`
+      : `Embedding: ${data.embeddingModel}`;
+    groqModelLabel.textContent = isLocal
+      ? `LLM: ${data.groqModel || "llama3"} (Local)`
+      : `LLM: ${data.groqModel || "llama-3.3-70b-versatile"}`;
   } catch (error) {
     ragSettingsStatus.textContent = `Settings unavailable: ${error.message}`;
   }
@@ -303,14 +347,27 @@ ragSettingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   ragSettingsStatus.textContent = "Saving settings...";
   try {
+    const isLocal = llmProviderSelect.value === "local";
+    const payload = {
+      provider: llmProviderSelect.value,
+      httpsProxy: httpsProxyInput.value.trim(),
+      allowInsecureSsl: spuAllowInsecureSslCheckbox.checked,
+    };
+
+    if (isLocal) {
+      payload.groqModel = ollamaChatModelInput.value.trim() || "llama3";
+      payload.ollamaHost = ollamaHostInput.value.trim();
+      payload.ollamaEmbedModel = ollamaEmbedModelInput.value.trim() || "nomic-embed-text";
+    } else {
+      payload.openRouterKey = openRouterKeyInput.value.trim();
+      payload.groqKey = groqKeyInput.value.trim();
+      payload.groqModel = groqModelInput.value;
+    }
+
     const response = await fetch("/api/rag/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        openRouterKey: openRouterKeyInput.value,
-        groqKey: groqKeyInput.value,
-        groqModel: groqModelInput.value,
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
     if (!data.success) throw new Error(data.error || "Save failed");

@@ -213,7 +213,127 @@ if !errorlevel! neq 0 (
     echo.
     echo   ⚠  WARNING: tkinter ^(GUI library^) not found.
     echo      This is unusual for a standard Python install.
-    echo      If the app fails to launch, please reinstall Python
+    echo      If the app fails to launch, please reinstall Python.
+)
+
+REM ============================================================
+REM  OPTIONAL STEP — Setup Local AI (Ollama + Models)
+REM ============================================================
+echo.
+echo   ────────────────────────────────────────────────────────────
+echo   [OPTIONAL]  Setup Local AI (Ollama + Models)
+echo   ────────────────────────────────────────────────────────────
+call :log "Ollama check started"
+
+set "INSTALL_OLLAMA=N"
+ollama --version >nul 2>&1
+if !errorlevel! equ 0 (
+    echo   ✔  Ollama is already installed!
+    set "OLLAMA_FOUND=1"
+    goto :ollama_pull
+)
+
+set "OLLAMA_PATH_TEST=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+if exist "!OLLAMA_PATH_TEST!" (
+    echo   ✔  Ollama found in !OLLAMA_PATH_TEST!
+    set "PATH=!LOCALAPPDATA!\Programs\Ollama;!PATH!"
+    set "OLLAMA_FOUND=1"
+    goto :ollama_pull
+)
+
+echo   Ollama (Local AI service) was not found. Installing it lets you
+echo   run the Knowledge Base assistant entirely offline on your laptop
+echo   without needing external API keys (uses Tess + Nomic Embed).
+echo.
+set /p "CHOICE_OLLAMA=Do you want to download and install Ollama silently? (y/n) [n]: "
+if /i "!CHOICE_OLLAMA!"=="y" (
+    set "INSTALL_OLLAMA=Y"
+)
+
+if /i "!INSTALL_OLLAMA!"=="Y" (
+    echo.
+    echo   Downloading Ollama Setup (~280 MB)...
+    call :log "Downloading Ollama Setup"
+    powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile '%TEMP%\OllamaSetup.exe' -UseBasicParsing } catch { exit 1 } }"
+    
+    if not exist "%TEMP%\OllamaSetup.exe" (
+        echo   ✖  ERROR: Could not download Ollama installer. Skipping.
+        call :log "ERROR: Ollama download failed"
+        goto :launch_app
+    )
+    
+    echo   Installing Ollama silently...
+    call :log "Installing Ollama silently"
+    "%TEMP%\OllamaSetup.exe" /silent
+    del "%TEMP%\OllamaSetup.exe" >nul 2>&1
+    
+    REM Add to current session path
+    set "PATH=!LOCALAPPDATA!\Programs\Ollama;!PATH!"
+    set "OLLAMA_FOUND=1"
+    
+    REM Refresh path in registry just in case
+    for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%B"
+    set "PATH=%PATH%;!USR_PATH!"
+    
+    echo   ✔  Ollama installed successfully!
+) else (
+    echo   Skipping Local AI setup.
+    goto :launch_app
+)
+
+:ollama_pull
+REM Ensure Ollama background service is running
+call :log "Checking if Ollama service is running"
+netstat -ano | findstr 11434 >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   Starting Ollama background service...
+    start /b "" ollama serve >nul 2>&1
+    timeout /t 5 /nobreak >nul
+)
+
+echo.
+echo   Pulling local AI models. This may take a few minutes...
+echo   ------------------------------------------------------------
+call :log "Pulling nomic-embed-text"
+echo   Pulling embedding model: nomic-embed-text (~270 MB)...
+ollama pull nomic-embed-text
+
+call :log "Pulling 01rohitkumar0104/tess"
+echo   Pulling chat model: 01rohitkumar0104/tess...
+ollama pull 01rohitkumar0104/tess
+
+REM Automatically configure .env file to use Ollama
+echo.
+echo   Configuring .env file for local model execution...
+call :log "Updating .env for Ollama"
+
+echo import os > "%TEMP%\update_env.py"
+echo from pathlib import Path >> "%TEMP%\update_env.py"
+echo env_path = Path(r'%~dp0.env') >> "%TEMP%\update_env.py"
+echo updates = {'GROQ_API_KEY': 'ollama', 'OPENROUTER_API_KEY': 'ollama', 'GROQ_MODEL': '01rohitkumar0104/tess', 'OLLAMA_EMBED_MODEL': 'nomic-embed-text', 'OLLAMA_HOST': 'http://localhost:11434'} >> "%TEMP%\update_env.py"
+echo values = {} >> "%TEMP%\update_env.py"
+echo if env_path.exists(): >> "%TEMP%\update_env.py"
+echo     for line in env_path.read_text(encoding='utf-8').splitlines(): >> "%TEMP%\update_env.py"
+echo         if '=' in line and not line.strip().startswith('#'): >> "%TEMP%\update_env.py"
+echo             k, v = line.split('=', 1) >> "%TEMP%\update_env.py"
+echo             values[k.strip()] = v.strip() >> "%TEMP%\update_env.py"
+echo values.update(updates) >> "%TEMP%\update_env.py"
+echo env_path.write_text('\n'.join(f'{k}={v}' for k, v in values.items()) + '\n', encoding='utf-8') >> "%TEMP%\update_env.py"
+
+!PYTHON_CMD! "%TEMP%\update_env.py"
+del "%TEMP%\update_env.py" >nul 2>&1
+
+echo   ✔  Local AI configured successfully!
+
+:launch_app
+echo.
+echo   ────────────────────────────────────────────────────────────
+echo   [4/4]  Launching SPU Log Analyzer...
+echo   ────────────────────────────────────────────────────────────
+call :log "Launching app"
+start "" !PYTHON_CMD! "%APP_DIR%\web_server.py"
+exit /b 0
+
 :log
 echo [%date% %time%] %~1 >> "%LOGFILE%"
 exit /b 0

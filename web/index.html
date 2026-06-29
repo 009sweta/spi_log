@@ -176,52 +176,98 @@
         </header>
 
         <div class="rag-grid">
-          <section class="panel rag-settings-panel">
-            <div class="panel-title">
-              <h3>API Settings</h3>
-            </div>
+          <div class="rag-sidebar">
+            <section class="panel rag-settings-panel" style="display: none;">
+              <div class="panel-title">
+                <h3>API Settings</h3>
+              </div>
 
-            <form id="ragSettingsForm">
-              <label class="field">
-                <span>OpenRouter API key</span>
-                <input id="openRouterKey" type="password" autocomplete="off" placeholder="Used for Nvidia Nemotron embeddings">
-              </label>
-              <label class="field">
-                <span>Groq API key</span>
-                <input id="groqKey" type="password" autocomplete="off" placeholder="Used for the chat completion model">
-              </label>
-              <label class="field">
-                <span>Groq model</span>
-                <select id="groqModel">
-                  <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
-                  <option value="llama-3.3-70b-versatile" selected>llama-3.3-70b-versatile</option>
-                  <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
-                </select>
-              </label>
-              <button id="saveRagSettingsBtn" class="secondary-btn" type="submit">Save Settings</button>
-              <p id="ragSettingsStatus" class="form-status"></p>
-            </form>
-          </section>
+              <form id="ragSettingsForm">
+                <label class="field">
+                  <span>LLM Provider</span>
+                  <select id="llmProvider">
+                    <option value="cloud">Cloud (OpenRouter + Groq)</option>
+                    <option value="local">Local (Ollama)</option>
+                  </select>
+                </label>
 
-          <section class="panel rag-docs-panel">
-            <div class="panel-title inline">
-              <h3>Documents</h3>
-              <span id="chunkCount" class="compact-pill">0 chunks</span>
-            </div>
+                <!-- Cloud Settings Group -->
+                <div id="cloudSettingsGroup">
+                  <label class="field">
+                    <span>OpenRouter API Key</span>
+                    <input id="openRouterKey" type="password" autocomplete="off" placeholder="Used for Nvidia Nemotron embeddings">
+                  </label>
+                  <label class="field">
+                    <span>Groq API Key</span>
+                    <input id="groqKey" type="password" autocomplete="off" placeholder="Used for the chat completion model">
+                  </label>
+                  <label class="field">
+                    <span>Groq Model</span>
+                    <select id="groqModel">
+                      <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                      <option value="llama-3.3-70b-versatile" selected>llama-3.3-70b-versatile</option>
+                      <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+                    </select>
+                  </label>
+                </div>
 
-            <form id="ragUploadForm" class="upload-form">
-              <label class="upload-zone">
-                <input id="ragFilesInput" name="files" type="file" multiple accept=".txt,.md,.csv,.log,.pdf">
-                <span>Choose documents</span>
-              </label>
-              <button id="uploadRagBtn" class="ghost-btn" type="submit">Upload</button>
-            </form>
+                <!-- Local Settings Group -->
+                <div id="localSettingsGroup" style="display: none;">
+                  <label class="field">
+                    <span>Ollama Host URL</span>
+                    <input id="ollamaHost" type="text" autocomplete="off" placeholder="http://localhost:11434">
+                  </label>
+                  <label class="field">
+                    <span>Ollama Chat Model</span>
+                    <input id="ollamaChatModel" type="text" autocomplete="off" placeholder="e.g., llama3.3, llama3, mistral">
+                  </label>
+                  <label class="field">
+                    <span>Ollama Embedding Model</span>
+                    <input id="ollamaEmbedModel" type="text" autocomplete="off" placeholder="e.g., nomic-embed-text">
+                  </label>
+                </div>
 
-            <div id="ragFilesList" class="doc-list empty">No documents uploaded.</div>
+                <hr style="border: 0; border-top: 1px solid var(--border); margin: var(--space-3) 0;">
 
-            <button id="ingestBtn" class="primary-btn" type="button">Ingest & Index</button>
-            <pre id="ingestLog" class="compact-log">Indexing logs will appear here.</pre>
-          </section>
+                <div class="panel-title" style="margin-top: var(--space-2); margin-bottom: var(--space-1);">
+                  <h3 style="font-size: 11px;">Network & Connection</h3>
+                </div>
+
+                <label class="field">
+                  <span>Corporate Proxy URL</span>
+                  <input id="httpsProxy" type="text" autocomplete="off" placeholder="e.g., http://proxyhost:8080">
+                </label>
+
+                <label class="field" style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: var(--space-4);">
+                  <input id="spuAllowInsecureSsl" type="checkbox" style="width: 18px; height: 18px; margin: 0; cursor: pointer;">
+                  <span style="font-size: 13px; font-weight: 600; cursor: pointer; user-select: none;">Bypass SSL Verification</span>
+                </label>
+
+                <button id="saveRagSettingsBtn" class="secondary-btn" type="submit">Save Settings</button>
+                <p id="ragSettingsStatus" class="form-status"></p>
+              </form>
+            </section>
+
+            <section class="panel rag-docs-panel">
+              <div class="panel-title inline">
+                <h3>Documents</h3>
+                <span id="chunkCount" class="compact-pill">0 chunks</span>
+              </div>
+
+              <form id="ragUploadForm" class="upload-form">
+                <label class="upload-zone">
+                  <input id="ragFilesInput" name="files" type="file" multiple accept=".txt,.md,.csv,.log,.pdf">
+                  <span>Choose documents</span>
+                </label>
+                <button id="uploadRagBtn" class="ghost-btn" type="submit">Upload</button>
+              </form>
+
+              <div id="ragFilesList" class="doc-list empty">No documents uploaded.</div>
+
+              <button id="ingestBtn" class="primary-btn" type="button">Ingest & Index</button>
+              <pre id="ingestLog" class="compact-log">Indexing logs will appear here.</pre>
+            </section>
+          </div>
 
           <section class="panel rag-chat-panel">
             <div class="panel-title inline">

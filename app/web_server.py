@@ -374,10 +374,14 @@ class Handler(BaseHTTPRequestHandler):
                 "success": True,
                 "hasGroq": bool(groq_key),
                 "hasOpenRouter": bool(openrouter_key),
-                "groqKey": mask_key(groq_key),
-                "openRouterKey": mask_key(openrouter_key),
+                "groqKey": groq_key if groq_key == "ollama" else mask_key(groq_key),
+                "openRouterKey": openrouter_key if openrouter_key == "ollama" else mask_key(openrouter_key),
                 "embeddingModel": OPENROUTER_EMBEDDING_MODEL,
                 "groqModel": get_setting("GROQ_MODEL", GROQ_DEFAULT_MODEL),
+                "ollamaHost": get_setting("OLLAMA_HOST", "http://localhost:11434"),
+                "ollamaEmbedModel": get_setting("OLLAMA_EMBED_MODEL", "nomic-embed-text"),
+                "httpsProxy": get_setting("HTTPS_PROXY", ""),
+                "allowInsecureSsl": get_setting("SPU_ALLOW_INSECURE_SSL", "") == "1",
             })
         except Exception as exc:
             _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"success": False, "error": str(exc)})
@@ -387,12 +391,35 @@ class Handler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
             updates = {}
-            if payload.get("groqKey") and "..." not in payload["groqKey"]:
-                updates["GROQ_API_KEY"] = payload["groqKey"].strip()
-            if payload.get("openRouterKey") and "..." not in payload["openRouterKey"]:
-                updates["OPENROUTER_API_KEY"] = payload["openRouterKey"].strip()
-            if payload.get("groqModel"):
-                updates["GROQ_MODEL"] = payload["groqModel"].strip()
+            
+            provider = payload.get("provider", "cloud")
+            if provider == "local":
+                updates["GROQ_API_KEY"] = "ollama"
+                updates["OPENROUTER_API_KEY"] = "ollama"
+                updates["GROQ_MODEL"] = payload.get("groqModel", "llama3").strip()
+                updates["OLLAMA_HOST"] = payload.get("ollamaHost", "http://localhost:11434").strip()
+                updates["OLLAMA_EMBED_MODEL"] = payload.get("ollamaEmbedModel", "nomic-embed-text").strip()
+            else:
+                groq_key = payload.get("groqKey", "").strip()
+                openrouter_key = payload.get("openRouterKey", "").strip()
+                
+                if groq_key == "" and get_setting("GROQ_API_KEY") == "ollama":
+                    updates["GROQ_API_KEY"] = ""
+                elif groq_key and "..." not in groq_key:
+                    updates["GROQ_API_KEY"] = groq_key
+                    
+                if openrouter_key == "" and get_setting("OPENROUTER_API_KEY") == "ollama":
+                    updates["OPENROUTER_API_KEY"] = ""
+                elif openrouter_key and "..." not in openrouter_key:
+                    updates["OPENROUTER_API_KEY"] = openrouter_key
+                    
+                if payload.get("groqModel"):
+                    updates["GROQ_MODEL"] = payload["groqModel"].strip()
+            
+            updates["HTTPS_PROXY"] = payload.get("httpsProxy", "").strip()
+            updates["HTTP_PROXY"] = payload.get("httpsProxy", "").strip()
+            updates["SPU_ALLOW_INSECURE_SSL"] = "1" if payload.get("allowInsecureSsl") else "0"
+            
             save_env_values(updates)
             _json_response(self, HTTPStatus.OK, {"success": True})
         except Exception as exc:
